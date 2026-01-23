@@ -33,11 +33,23 @@ We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage o
 
 ## 📉 The Logic of "Forgetfulness" (Decay)
 
-A system is only as fast as its ability to shed dead weight. YaFaD maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades.
+A system is only as fast as its ability to shed dead weight. **YaFaD_ai** maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
 
-$$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$$U$ (Utility Index): The current importance of the data.$\lambda$ (Decay Constant): The "Administrator Factor"—tunable to your specific business needs.$\Delta t$: Time elapsed since the last access.
+---
 
-**The result:** A "breathing" middleware that prioritizes mission-critical information while offloading or archiving the trivial.
+### The Utility Formula
+
+$$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
+
+**Parameters:**
+
+* **$U$ (Utility Index):** The current importance score of the data record.
+* **$\lambda$ (Decay Constant):** The "Administrator Factor"—tunable to your specific business requirements.
+* **$\Delta t$:** The time elapsed since the last data access.
+
+---
+
+> **The Result:** A "breathing" middleware that prioritizes mission-critical information while automatically offloading or archiving the trivial.
 
 ---
 
