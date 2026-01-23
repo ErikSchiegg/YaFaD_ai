@@ -18,7 +18,7 @@ In the age of AI, traditional databases are often bottlenecked by the sheer volu
 
 ---
 
-## 🧠 Core Concepts: Bio-Inspired Intelligence
+## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts: Bio-Inspired Intelligence
 
 ### 1. The Utility Index (The Pheromone Principle)
 
@@ -33,7 +33,7 @@ We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage o
 
 ---
 
-## 📉 The Logic of "Forgetfulness" (Decay)
+## <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
 
 A system is only as fast as its ability to shed dead weight. **YaFaD_ai** maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
 
