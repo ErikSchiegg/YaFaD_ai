@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="YaFaD_ai Logo" width="300">
+  <img src="assets/logo.png" alt="YaFaD_ai Logo" width="100%">
 </p>
 
 **YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. Instead of treating data as static entries, YaFaD treats it as **dynamic memory**, using biological principles to predictively accelerate access and optimize infrastructure costs.
