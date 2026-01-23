@@ -6,7 +6,7 @@
 
 ---
 
-## 🚀 Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: middle;">?
+## 🚀 Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: sub;">?
 
 In the age of AI, traditional databases are often bottlenecked by the sheer volume of "noise"—data that is stored but rarely used. YaFaD_ai solves this by mimicking the efficiency of the human brain and natural systems.
 
