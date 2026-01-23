@@ -35,9 +35,7 @@ We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage o
 
 A system is only as fast as its ability to shed dead weight. YaFaD maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades.
 
-* ** (Utility):** The current importance of the data.
-* ** (Decay Constant):** The "Administrator Factor"—tunable to your specific business needs.
-* **:** Time elapsed since the last access.
+$$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$$U$ (Utility Index): The current importance of the data.$\lambda$ (Decay Constant): The "Administrator Factor"—tunable to your specific business needs.$\Delta t$: Time elapsed since the last access.
 
 **The result:** A "breathing" middleware that prioritizes mission-critical information while offloading or archiving the trivial.
 
