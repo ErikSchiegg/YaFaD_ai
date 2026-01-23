@@ -27,7 +27,7 @@ Just as ants mark successful paths with pheromones, YaFaD assigns a **Utility In
 
 ### 2. Golden Ratio Cascading
 
-We utilize the **Golden Ratio ()** and Fibonacci-inspired structures to manage our sub-tables. This mathematical approach allows the system to scale its internal architecture organically, ensuring that data density and access speed remain in perfect equilibrium as your workload grows.
+We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage our sub-tables. This mathematical approach allows the system to scale its internal architecture organically, ensuring that data density and access speed remain in perfect equilibrium as your workload grows.
 
 ---
 
