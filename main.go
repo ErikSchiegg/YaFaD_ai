@@ -13,60 +13,60 @@ import (
 )
 
 func main() {
-	// 1. Verbindung zur DB (Passwort 'test' & sslmode deaktiviert)
+	// 1. Database connection (pwd: 'test' & sslmode disabled)
 	connStr := "postgres://eriks:test@localhost:5432/yafad_test?sslmode=disable"
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, connStr)
 	if err != nil {
-		fmt.Printf("❌ DB-Fehler: %v\n", err)
+		fmt.Printf("❌ DB connection error: %v\n", err)
 		return
 	}
 	defer conn.Close(ctx)
 
 	fmt.Println("--- 🧬 YaFaD Migration Engine: Live Test ---")
 
-	// 2. Wir legen einen "heißen" Datensatz in Table0 an
+	// 2. Initializing record in T0 (Hot Tier)
 	recordID := "ai_model_weights_v1"
-	initialUtility := 1.0 // 100% Relevanz beim Start
+	initialUtility := 1.0 // 100% relevance at startup
 	payload := `{"layer": "attention", "params": 512, "status": "active"}`
 
 	_, err = conn.Exec(ctx, "INSERT INTO table0 (id, payload, utility_index) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET utility_index = $3",
 		recordID, payload, initialUtility)
 	if err != nil {
-		fmt.Printf("❌ Fehler beim Insert: %v\n", err)
+		fmt.Printf("❌ INSERT error: %v\n", err)
 		return
 	}
-	fmt.Printf("✅ Datensatz '%s' in table0 (Hot) angelegt.\n", recordID)
+	fmt.Printf("✅ Record '%s' successfully created in T0 (Hot Tier).\n", recordID)
 
-	// 3. Simulation: Zeit vergeht (48 Stunden)
+	// 3. Simulation: 48h time interval
 	deltaT := 48.0
-	lambda := 0.05 // Unser Administrator-Faktor
+	lambda := 0.05 // Administrator decay factor
 
-	// Rust berechnet den neuen Index
+	// Rust calculates the new Index
 	uNow := float64(C.calculate_decay(C.double(initialUtility), C.double(lambda), C.double(deltaT)))
-	fmt.Printf("🕒 48 Stunden später... Neuer Utility-Index: %.4f\n", uNow)
+	fmt.Printf("🕒 48 hours later... New Utility Index: %.4f\n", uNow)
 
-	// 4. MIGRATION: Das Herzstück der Bio-Middleware
+	// 4. MIGRATION: Bio-inspired middleware logic
 	if uNow < 0.5 {
-		fmt.Println("📉 Relevanz unter Schwellenwert (0.5). Starte Kaskadierung...")
+		fmt.Println("📉 Relevance below threshold (0.5). Starting cascade migration...")
 
-		// Wir verschieben die Daten atomar (Transaktion)
+		// Moving data atomically (transaction)
 		tx, _ := conn.Begin(ctx)
 
-		// Aus Table0 löschen
+		// Delete from T0
 		tx.Exec(ctx, "DELETE FROM table0 WHERE id = $1", recordID)
 
-		// In Table1 (nächste Ebene) einfügen
+		// Relocate to T1 (Warm Tier)
 		tx.Exec(ctx, "INSERT INTO table1 (id, payload, utility_index) VALUES ($1, $2, $3)",
 			recordID, payload, uNow)
 
 		err = tx.Commit(ctx)
 		if err != nil {
-			fmt.Printf("❌ Migration fehlgeschlagen: %v\n", err)
+			fmt.Printf("❌ Migration failed: %v\n", err)
 		} else {
-			fmt.Println("🚚 Datensatz erfolgreich von table0 -> table1 verschoben.")
+			fmt.Println("🚚 Successfully moved record from T0 to T1.")
 		}
 	} else {
-		fmt.Println("🔥 Daten sind noch relevant. Bleiben in table0.")
+		fmt.Println("🔥 Data still relevant. Remaining in T0.")
 	}
 }
