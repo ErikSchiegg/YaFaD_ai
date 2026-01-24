@@ -1,0 +1,11 @@
+[package]
+name = "yafad_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "yafad_core"
+crate-type = ["staticlib"] # WICHTIG: Erzeugt eine .a Datei für Go
+
+[dependencies]
+# Hier kommen später Mathe-Bibliotheken rein
