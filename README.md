@@ -94,7 +94,7 @@ Open three different terminals navigated to the YaFaD_ai project folder
    go run user_simulator.go
    ```
 ### 3. Output
-gravity yet to be iuncluded
+Automated Biological Decay & Tier-Compaction</br> (Development Roadmap).
 <p align="center">
   <img src="assets/test_suite.png" alt="YaFaD test suite" width="100%">
 </p>
