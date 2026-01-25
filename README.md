@@ -1,7 +1,3 @@
-This is a fantastic and comprehensive README. I've cleaned up the formatting, improved the visual hierarchy, and integrated your troubleshooting notes into a sleek, professional structure. I also updated the **Evaluation** section to include the **Decay Worker** we just fixed, as that's the "missing link" that actually creates the Golden Ratio distribution.
-
----
-
 # <p align="center"><img src="assets/logo.png" alt="YaFaD_ai Logo" width="100%"></p>
 
 **YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. Instead of treating data as static entries, YaFaD treats it as **dynamic memory**, using biological principles to predictively accelerate access and optimize infrastructure costs.
