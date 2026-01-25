@@ -21,14 +21,11 @@ In the age of AI, traditional databases are often bottlenecked by the sheer volu
 ## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts: Bio-Inspired Intelligence
 
 ### 1. The Utility Index (The Pheromone Principle)
-
 Just as ants mark successful paths with pheromones, YaFaD assigns a **Utility Index** to every data record.
-
 * **Reinforcement:** Frequently accessed data gains "scent," moving it into high-speed cascading sub-tables.
 * **Relevance:** The system automatically prioritizes what matters to your business operations right now.
 
 ### 2. Golden Ratio Cascading
-
 We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage our sub-tables. This mathematical approach allows the system to scale its internal architecture organically, ensuring that data density and access speed remain in perfect equilibrium as your workload grows.
 
 ---
@@ -37,30 +34,20 @@ We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage o
 
 A system is only as fast as its ability to shed dead weight. **YaFaD_ai** maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
 
----
-
 ### The Utility Formula
-
 $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
 **Parameters:**
-
 * **$U$ (Utility Index):** The current importance score of the data record.
 * **$\lambda$ (Decay Constant):** The "Administrator Factor"—tunable to your specific business requirements.
 * **$\Delta t$:** The time elapsed since the last data access.
 
 ---
 
-> **The Result:** A "breathing" middleware that prioritizes mission-critical information while automatically offloading or archiving the trivial.
-
----
-
 ## 🛠 Project Status & Roadmap
 
-YaFaD_ai is purpose-built for high-stakes environments: Edge Computing, Real-time AI Training, and High-Frequency Analytics.
-
 | Component | Status | Tech Stack |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | **High-Performance Core** | ✅ Stable | Rust |
 | **Orchestration Layer** | 🚧 In Progress | Go |
 | **Utility-Driven Cache** | ✅ Functional | AI Logic |
@@ -69,7 +56,24 @@ YaFaD_ai is purpose-built for high-stakes environments: Edge Computing, Real-tim
 ---
 
 ## 🤝 Support the Development
-
 We are building the memory layer for the next generation of AI infrastructure. If you believe in a faster, leaner, and more "intelligent" way to handle data, consider sponsoring the project.
 
 [Add Sponsor Button Link]
+
+## 🧪 Evaluation & Benchmarking
+
+YaFaD_ai includes a comprehensive test suite to evaluate the performance of the **Synaptic Buffer** and the **Golden Ratio Cascading** logic under realistic AI workloads.
+
+### 1. Prerequisites
+Ensure your environment variables are set to allow the services to communicate with your local PostgreSQL instance:
+
+```bash
+# Set your local credentials
+set -x DB_USER your_user
+set -x DB_PASSWORD your_password
+set -x DB_NAME yafad_test
+```
+
+<p align="center">
+  <img src="assets/test_suite.png" alt="YaFaD test suite" width="100%">
+</p>
