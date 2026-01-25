@@ -59,7 +59,7 @@ $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
 ## 🧪 Evaluation & Benchmarking
 
-YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic.
+YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic. (Developement Road)
 
 ### 1. Prerequisites
 
