@@ -73,7 +73,25 @@ set -x DB_USER your_user
 set -x DB_PASSWORD your_password
 set -x DB_NAME yafad_test
 ```
+### 🚀 How to Run the Evaluation
 
+1. **Step 1: Start the Core Engine**
+   Open your first terminal and run:
+   ```bash
+   go run setup_db.go
+   ```
+
+2. **Step 2: Seed the Database**
+   Open a second terminal to create the 50MB data mass:
+   ```bash
+   go run seed_db.go
+   ```
+
+3. **Step 3: Start the Traffic Simulator**
+   Run the user behavior emulation:
+   ```bash
+   go run user_simulator.go
+   ```
 <p align="center">
   <img src="assets/test_suite.png" alt="YaFaD test suite" width="100%">
 </p>
