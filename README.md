@@ -34,9 +34,7 @@ We utilize the **Golden Ratio ** and Fibonacci structures to manage sub-tables. 
 ## <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
 
 A system is only as fast as its ability to shed dead weight. **YaFaD_ai** maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
-
----
-
+--
 ### The Utility Formula
 $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
