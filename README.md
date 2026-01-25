@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="assets/logo.png" alt="YaFaD_ai Logo" width="100%">
-</p>
+This is a fantastic and comprehensive README. I've cleaned up the formatting, improved the visual hierarchy, and integrated your troubleshooting notes into a sleek, professional structure. I also updated the **Evaluation** section to include the **Decay Worker** we just fixed, as that's the "missing link" that actually creates the Golden Ratio distribution.
+
+---
+
+# <p align="center"><img src="assets/logo.png" alt="YaFaD_ai Logo" width="100%"></p>
 
 **YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. Instead of treating data as static entries, YaFaD treats it as **dynamic memory**, using biological principles to predictively accelerate access and optimize infrastructure costs.
 
@@ -8,93 +10,132 @@
 
 ## Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: -5px;">?
 
-In the age of AI, traditional databases are often bottlenecked by the sheer volume of "noise"—data that is stored but rarely used. YaFaD_ai solves this by mimicking the efficiency of the human brain and natural systems.
+In the age of AI, traditional databases are often bottlenecked by the sheer volume of "noise"—data that is stored but rarely used. YaFaD_ai mimics the efficiency of the human brain to solve this.
 
-### Strategic Value for Decision-Makers:
+### Strategic Value
 
-* **Cost-Efficient Scaling:** By actively "forgetting" trivial data, YaFaD reduces hardware overhead and cloud storage costs without sacrificing performance.
-* **Hybrid Powerhouse:** Built with a **Go/Rust hybrid core**, it combines the rapid orchestration of Go with the uncompromising memory safety and speed of Rust.
-* **Predictive Performance:** Unlike reactive systems, YaFaD uses a "Pheromone Principle" to anticipate which data will be needed next, ensuring sub-millisecond latency for critical tasks.
+* **Cost-Efficient Scaling:** Actively "forgets" trivial data to reduce hardware overhead and cloud costs.
+* **Hybrid Powerhouse:** Combines **Go’s** rapid orchestration with **Rust’s** uncompromising memory safety and speed.
+* **Predictive Performance:** Uses a "Pheromone Principle" to anticipate data needs, ensuring sub-millisecond latency.
 
 ---
 
-## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts: Bio-Inspired Intelligence
+## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts
 
 ### 1. The Utility Index (The Pheromone Principle)
-Just as ants mark successful paths with pheromones, YaFaD assigns a **Utility Index** to every data record.
-* **Reinforcement:** Frequently accessed data gains "scent," moving it into high-speed cascading sub-tables.
-* **Relevance:** The system automatically prioritizes what matters to your business operations right now.
+
+Just as ants mark paths, YaFaD assigns a **Utility Index** to every record.
+
+* **Reinforcement:** Frequently accessed data gains "scent," moving into high-speed tiers.
+* **Relevance:** Automatically prioritizes data critical to current business operations.
 
 ### 2. Golden Ratio Cascading
-We utilize the **Golden Ratio Φ** and Fibonacci-inspired structures to manage our sub-tables. This mathematical approach allows the system to scale its internal architecture organically, ensuring that data density and access speed remain in perfect equilibrium as your workload grows.
+
+We utilize the **Golden Ratio ** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
 
 ---
 
 ## <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
 
-A system is only as fast as its ability to shed dead weight. **YaFaD_ai** maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
+Peak performance requires shedding dead weight. **YaFaD_ai** applies a mathematical decay function to data relevance. If a record isn't reinforced, its importance fades.
 
 ### The Utility Formula
-$$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
-**Parameters:**
-* **$U$ (Utility Index):** The current importance score of the data record.
-* **$\lambda$ (Decay Constant):** The "Administrator Factor"—tunable to your specific business requirements.
-* **$\Delta t$:** The time elapsed since the last data access.
+* **:** Current importance score.
+* **:** The "Administrator Factor"—tunable decay constant.
+* **:** Time elapsed since the last access.
 
 ---
 
 ## 🛠 Project Status & Roadmap
 
 | Component | Status | Tech Stack |
-| :--- | :--- | :--- |
+| --- | --- | --- |
 | **High-Performance Core** | ✅ Stable | Rust |
 | **Orchestration Layer** | 🚧 In Progress | Go |
 | **Utility-Driven Cache** | ✅ Functional | AI Logic |
+| **Decay Engine (Gravity)** | ✅ Functional | Rust/Go |
 | **Distributed Sync** | 📅 Roadmap | Cloud-Native |
 
 ---
 
-## 🤝 Support the Development
-We are building the memory layer for the next generation of AI infrastructure. If you believe in a faster, leaner, and more "intelligent" way to handle data, consider sponsoring the project.
-
-[Add Sponsor Button Link]
-
 ## 🧪 Evaluation & Benchmarking
 
-YaFaD_ai includes a comprehensive test suite to evaluate the performance of the **Synaptic Buffer** and the **Golden Ratio Cascading** logic under realistic AI workloads.
+YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic.
 
 ### 1. Prerequisites
-Ensure your environment variables are set to allow the services to communicate with your local PostgreSQL instance:
 
-```bash go
-# Set your local credentials
+Set your environment variables for PostgreSQL communication:
+
+```bash
 set -x DB_USER your_user
 set -x DB_PASSWORD your_password
 set -x DB_NAME yafad_test
+
 ```
-### 2. 🚀 How to Run the Evaluation
-Open three different terminals navigated to the YaFaD_ai project folder
 
-1. **Step 1: Start the Core Engine**
-   Open your first terminal and run:
-   ```bash go
-   go run setup_db.go
-   ```
+### 2. 🚀 Running the Evaluation
 
-2. **Step 2: Seed the Database**
-   Open a second terminal to create the 50MB data mass:
-   ```bash go
-   go run seed_db.go
-   ```
+Navigate to the project folder and open **four** terminal windows:
 
-3. **Step 3: Start the Traffic Simulator**
-   Run the user behavior emulation in a third terminal:
-   ```bash go
-   go run user_simulator.go
-   ```
-### 3. Output
-Automated Biological Decay & Tier-Compaction</br> (Development Roadmap).
-<p align="center">
-  <img src="assets/test_suite.png" alt="YaFaD test suite" width="100%">
-</p>
+1. **Terminal 1 (Monitor):** Start the core engine and dashboard.
+```bash
+go run setup_db.go
+
+```
+
+
+2. **Terminal 2 (Seeding):** Create the evaluation data mass (e.g., 90MB).
+```bash
+go run seed_db.go
+
+```
+
+
+3. **Terminal 3 (Gravity):** Start the biological decay worker to trigger the Golden Ratio cascade.
+```bash
+go run decay_worker.go
+
+```
+
+
+4. **Terminal 4 (Traffic):** Emulate user behavior and data reinforcement.
+```bash
+go run user_simulator.go
+
+```
+
+
+
+---
+
+## 🛠 Troubleshooting & CGO Setup
+
+Building a Go/Rust hybrid requires tight coordination. Here are solutions to common hurdles:
+
+### 1. The Rust-Go Bridge (Linking)
+
+If you see `undefined reference to 'calculate_decay'`:
+
+* **No Mangle:** Ensure `core/src/lib.rs` uses `#[no_mangle]` and `pub extern "C"`.
+* **Library Type:** `core/Cargo.toml` must have `crate-type = ["cdylib", "staticlib"]`.
+* **Force Rebuild:** Run `cd core && cargo clean && cargo build --release`.
+
+### 2. Shared Library Path
+
+If the program fails at startup (`cannot open shared object file`):
+
+* **RPATH:** We use `-Wl,-rpath` in Go `LDFLAGS` to bake the path into the binary.
+* **Manual Override:** `LD_LIBRARY_PATH=./core/target/release go run decay_worker.go`.
+
+### 3. Database Integrity
+
+* **Unique Constraints:** If `seed_db.go` fails, run:
+`TRUNCATE buffer_tier, table0, table1, table2, table3, table4;`
+* **CGO Cache:** If linking still fails after a fix, run `go clean -cache`.
+
+---
+
+[Add Sponsor Button Link]
+
+---

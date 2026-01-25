@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "yafad_core"
-crate-type = ["staticlib"] # WICHTIG: Erzeugt eine .a Datei für Go
+crate-type = ["staticlib", "cdylib"] # cdylib creates the .so file
 
 [dependencies]
 # Hier kommen später Mathe-Bibliotheken rein
