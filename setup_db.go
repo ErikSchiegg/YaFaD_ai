@@ -41,8 +41,41 @@ func StartConsolidator(conn *pgx.Conn, interval time.Duration) {
 			} else {
 				fmt.Println("✅ Consolidation successful. T0 is now up to date.")
 			}
+			// Example: Put this inside the Consolidator loop after a successful merge
+			DisplaySystemStatus(ctx, conn)
 		}
 	}()
+}
+
+// DisplaySystemStatus prints a high-level overview of the data distribution.
+func DisplaySystemStatus(ctx context.Context, conn *pgx.Conn) {
+	fmt.Println("\n--- 📊 YaFaD_ai System Status Dashboard ---")
+
+	// List of all tiers including the buffer
+	tiers := []string{"buffer_tier", "table0", "table1", "table2", "table3", "table4"}
+
+	fmt.Printf("%-15s | %-10s\n", "Tier Name", "Record Count")
+	fmt.Println("-------------------------------------------")
+
+	for _, tier := range tiers {
+		var count int
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tier)
+
+		err := conn.QueryRow(ctx, query).Scan(&count)
+		if err != nil {
+			fmt.Printf("%-15s | ❌ Error\n", tier)
+			continue
+		}
+
+		// Highlight the Buffer and T0 for better visibility
+		prefix := "  "
+		if tier == "buffer_tier" || tier == "table0" {
+			prefix = "🔥 "
+		}
+
+		fmt.Printf("%s%-13s | %-10d\n", prefix, tier, count)
+	}
+	fmt.Println("-------------------------------------------")
 }
 
 func main() {
