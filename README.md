@@ -67,31 +67,34 @@ YaFaD_ai includes a comprehensive test suite to evaluate the performance of the 
 ### 1. Prerequisites
 Ensure your environment variables are set to allow the services to communicate with your local PostgreSQL instance:
 
-```bash
+```bash go
 # Set your local credentials
 set -x DB_USER your_user
 set -x DB_PASSWORD your_password
 set -x DB_NAME yafad_test
 ```
-### 🚀 How to Run the Evaluation
+### 2. 🚀 How to Run the Evaluation
+Open three different terminals navigated to the YaFaD_ai project folder
 
 1. **Step 1: Start the Core Engine**
    Open your first terminal and run:
-   ```bash
+   ```bash go
    go run setup_db.go
    ```
 
 2. **Step 2: Seed the Database**
    Open a second terminal to create the 50MB data mass:
-   ```bash
+   ```bash go
    go run seed_db.go
    ```
 
 3. **Step 3: Start the Traffic Simulator**
-   Run the user behavior emulation:
-   ```bash
+   Run the user behavior emulation in a third terminal:
+   ```bash go
    go run user_simulator.go
    ```
+### 3. Output
+gravity yet to be iuncluded
 <p align="center">
   <img src="assets/test_suite.png" alt="YaFaD test suite" width="100%">
 </p>
