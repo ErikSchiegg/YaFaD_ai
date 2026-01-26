@@ -74,7 +74,7 @@ $$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$
 ## 🌌 The Fractal Archive: Recursive Scaling
 
 <p align="center">
-  <img src="assets/recursive_architecture.jpg" alt="YaFaD_ai Recursive Fractal Architecture" width="100%">
+  <img src="assets/recursive_architecture.png" alt="YaFaD_ai Recursive Fractal Architecture" width="100%">
 </p>
 
 True biological systems don't just "fill up"—they grow. When a brain needs more capacity, it branches new neural pathways. YaFaD_ai applies this **Fractal Logic** to data storage.
