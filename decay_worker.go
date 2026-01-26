@@ -1,4 +1,4 @@
-ppackage main
+package main
 
 /*
 #cgo LDFLAGS: -L${SRCDIR}/core/target/release -lyafad_core -Wl,-rpath,${SRCDIR}/core/target/release -lm -ldl
@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,23 +40,31 @@ func main() {
 	// In a real prod setup, these would be two different URLs.
 	// For testing, we use the same DB but treat them as separate connections.
 	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" { dbUser = "eriks" }
+	if dbUser == "" {
+		dbUser = "eriks"
+	}
 	dbPass := os.Getenv("DB_PASSWORD")
-	if dbPass == "" { dbPass = "test" }
-	
+	if dbPass == "" {
+		dbPass = "test"
+	}
+
 	hotConnStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
 	coldConnStr := hotConnStr // Currently same DB, but logically separated
 
 	ctx := context.Background()
-	
+
 	// Initialize Hot Pool
 	hotPool, err := pgxpool.New(ctx, hotConnStr)
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 	defer hotPool.Close()
 
 	// Initialize Cold Pool
 	coldPool, err := pgxpool.New(ctx, coldConnStr)
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 	defer coldPool.Close()
 
 	router := &StorageRouter{
@@ -117,7 +124,7 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 
 	sourceTier := startTier
 	targetTier := startTier + 1
-	
+
 	sourceTable := fmt.Sprintf("table%d", sourceTier)
 	targetTable := fmt.Sprintf("table%d", targetTier)
 
@@ -141,8 +148,12 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 				currentLambda *= 1.05 // Target empty -> speed up
 			}
 			// Clamp
-			if currentLambda < min { currentLambda = min }
-			if currentLambda > max { currentLambda = max }
+			if currentLambda < min {
+				currentLambda = min
+			}
+			if currentLambda > max {
+				currentLambda = max
+			}
 		}
 
 		// 4. Execution (Decay & Move)
@@ -181,32 +192,42 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n", sourceTable, targetTable, float64(targetCount)/math.Max(1, float64(sourceCount)), currentLambda)
 			}
 			currentSleep /= 2
-			if currentSleep < minSleep { currentSleep = minSleep }
+			if currentSleep < minSleep {
+				currentSleep = minSleep
+			}
 		} else {
 			currentSleep *= 2
-			if currentSleep > maxSleep { currentSleep = maxSleep }
+			if currentSleep > maxSleep {
+				currentSleep = maxSleep
+			}
 		}
-		
+
 		time.Sleep(currentSleep)
 	}
 }
 
 // migrateRecord intelligently handles data movement regardless of physical location
 func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, sourceTable, targetTable, id, payload string, uNow float64, lastActivity time.Time) bool {
-	
+
 	// SCENARIO A: Same Physical DB (Fast Path)
 	if sourcePool == targetPool {
 		tx, err := sourcePool.Begin(ctx)
-		if err != nil { return false }
+		if err != nil {
+			return false
+		}
 		defer tx.Rollback(ctx)
 
 		_, err = tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), id)
-		if err != nil { return false }
+		if err != nil {
+			return false
+		}
 
-		_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4)", targetTable), 
+		_, err = tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4)", targetTable),
 			id, payload, uNow, lastActivity)
-		
-		if err != nil { return false }
+
+		if err != nil {
+			return false
+		}
 		return tx.Commit(ctx) == nil
 	}
 
@@ -214,15 +235,15 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 	// T2 (Hot) -> T3 (Cold)
 	// We cannot use a single transaction across two pools without 2PC.
 	// Safe Strategy: Copy -> Verify -> Delete
-	
+
 	// 1. Simulate Network Latency for the "Cold" link
 	// (Simulating S3 or remote HDD lag)
-	time.Sleep(20 * time.Millisecond) 
+	time.Sleep(20 * time.Millisecond)
 
 	// 2. Insert into Target (Cold)
 	_, err := targetPool.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable),
 		id, payload, uNow, lastActivity)
-	
+
 	if err != nil {
 		fmt.Printf("❌ Archive Upload Failed: %v\n", err)
 		return false
@@ -231,7 +252,7 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 	// 3. Delete from Source (Hot) ONLY if Insert succeeded
 	// Note: In a real distributed system, we might need an eventual consistency check here.
 	_, err = sourcePool.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), id)
-	
+
 	if err != nil {
 		fmt.Printf("⚠️ Failed to clean up Hot Tier: %v\n", err)
 		// We leave the record to be picked up next time (at worst we have a duplicate for a moment)
