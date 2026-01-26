@@ -27,15 +27,16 @@ Just as ants mark paths, YaFaD assigns a **Utility Index** to every record.
 
 ### 2. Golden Ratio Cascading
 
-We utilize the **Golden Ratio ** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
+We utilize the **Golden Ratio $\Phi$** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
 
 ---
 
-### <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
+## <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
 
 A system is only as fast as its ability to shed dead weight. YaFaD_ai maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
 
 ### The Utility Formula
+
 $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
 **Parameters:**
@@ -44,14 +45,37 @@ $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 * **$\Delta t$:** The time elapsed since the last data access.
 
 ---
-🧬 Feature: The Homeostatic Regulator (PID Control)To maintain the Golden Ratio ($\Phi \approx 1.618$) across storage tiers regardless of input velocity, YaFaD_ai employs a biological feedback loop inspired by the endocrine system. Just as the body regulates insulin levels, our Homeostatic Regulator dynamically adjusts the decay constant ($\lambda$) in real-time.The ConceptInstead of a static decay rate, the system utilizes a Proportional-Integral-Derivative (PID) Controller to monitor the "health" of the data flow. It continuously measures the ratio between adjacent tiers and modulates "gravity" to prevent both starvation and overflow.Control Logic1. Configuration (Admin Parameters)Basis Lambda ($\lambda_{base}$): The starting decay rate (e.g., 0.005).Dynamic Range: The safe operating window for the decay factor (e.g., 0.001 to 0.05).2. The Feedback LoopThe regulator calculates the deviation (Error) from the ideal Golden Ratio for every cascade cycle:$$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$3. Homeostatic ResponseIf Error > 0 (Target Overflow): The tier below is filling too fast. The system decreases $\lambda$ (inhibits decay) to slow down the flow.If Error < 0 (Target Starvation): The tier below is empty. The system increases $\lambda$ (accelerates decay) to flush data downwards.Result: A self-healing infrastructure that autonomously scales its internal "pressure" to handle sudden traffic spikes or long periods of inactivity without manual intervention.
+
+## 🧬 Feature: The Homeostatic Regulator (PID Control)
+
+To maintain the **Golden Ratio ($\Phi \approx 1.618$)** across storage tiers regardless of input velocity, YaFaD_ai employs a biological feedback loop inspired by the endocrine system. Just as the body regulates insulin levels, our **Homeostatic Regulator** dynamically adjusts the decay constant ($\lambda$) in real-time.
+
+### The Concept
+Instead of a static decay rate, the system utilizes a **Proportional-Integral-Derivative (PID) Controller** to monitor the "health" of the data flow. It continuously measures the ratio between adjacent tiers and modulates "gravity" to prevent both starvation and overflow.
+
+### Control Logic
+
+**1. Configuration (Admin Parameters)**
+* **Basis Lambda ($\lambda_{base}$):** The starting decay rate (e.g., `0.005`).
+* **Dynamic Range:** The safe operating window for the decay factor (e.g., `0.001` to `0.05`).
+
+**2. The Feedback Loop**
+The regulator calculates the deviation (Error) from the ideal Golden Ratio for every cascade cycle:
+
+$$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$
+
+**3. Homeostatic Response**
+* **If Error > 0 (Target Overflow):** The tier below is filling too fast. The system **decreases $\lambda$** (inhibits decay) to slow down the flow.
+* **If Error < 0 (Target Starvation):** The tier below is empty. The system **increases $\lambda$** (accelerates decay) to flush data downwards.
+
+> **Result:** A self-healing infrastructure that autonomously scales its internal "pressure" to handle sudden traffic spikes or long periods of inactivity without manual intervention.
 
 ---
 
 ## 🛠 Project Status & Roadmap
 
 | Component | Status | Tech Stack |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | **High-Performance Core** | ✅ Stable | Rust |
 | **Orchestration Layer** | 🚧 In Progress | Go |
 | **Utility-Driven Cache** | ✅ Functional | AI Logic |
@@ -62,7 +86,7 @@ $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 
 ## 🧪 Evaluation & Benchmarking
 
-YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic. (Developement Road)
+YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic (Development Roadmap).
 
 ### 1. Prerequisites
 
