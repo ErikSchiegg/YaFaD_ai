@@ -164,6 +164,6 @@ If the program fails at startup (`cannot open shared object file`):
 ❤️ Support the Project
 If you find the bio-inspired architecture of YaFaD_ai fascinating, consider supporting the continued evolution of this digital organism.
 
-<a href="https://github.com/sponsors/ErikSchiegg"> <img src="https://www.google.com/url?sa=E&source=gmail&q=https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge%26logo=github-sponsors" alt="Sponsor Button" /> </a>
+<a href="https://github.com/sponsors/ErikSchiegg"> <img src="https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge%26logo=github-sponsors" alt="Sponsor Button" /> </a>
 
 ---
