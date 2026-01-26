@@ -152,6 +152,13 @@ go run user_simulator.go
 
 ```
 
+
+5.  **Terminal 5 (Fractal Engine):** Activate the recursive deep-storage system.
+```bash
+go run fractal_decay.go
+```
+*Note: This worker acts as the "Pressure Valve." It monitors `table4` for overflows (>50k records) and autonomously manages the infinite archive cascade (`archive0` → `archive4`).*
+
 <p align="center"><img src="assets/test_suite.png" alt="YaFaD_ai Test Suite" width="100%"></p>
 
 ---
