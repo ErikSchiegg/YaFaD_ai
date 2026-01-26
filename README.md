@@ -84,6 +84,12 @@ $$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$
 
 ---
 
+❤️ Support the Project
+Drive the future of cost-efficient infrastructure. YaFaD_ai is engineered to autonomously slash cloud storage waste and reduce operational overhead. Support the project to accelerate the development of features that directly optimize your Total Cost of Ownership (TCO). If you find the bio-inspired architecture of YaFaD_ai fascinating, consider supporting the continued evolution of this digital organism.
+
+<a href="https://github.com/sponsors/ErikSchiegg"> <img src="https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge%26logo=github-sponsors" alt="Sponsor Button" /> </a>
+
+---
 ## 🧪 Evaluation & Benchmarking
 
 YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic (Development Roadmap).
@@ -161,9 +167,4 @@ If the program fails at startup (`cannot open shared object file`):
 
 ---
 
-❤️ Support the Project
-If you find the bio-inspired architecture of YaFaD_ai fascinating, consider supporting the continued evolution of this digital organism.
 
-<a href="https://github.com/sponsors/ErikSchiegg"> <img src="https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge%26logo=github-sponsors" alt="Sponsor Button" /> </a>
-
----
