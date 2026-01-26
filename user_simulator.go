@@ -4,57 +4,80 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"os"
+	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
+func main() {
+	connStr := "postgres://eriks:test@localhost:5432/yafad_test?sslmode=disable"
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, connStr)
+	if err != nil {
+		fmt.Printf("❌ Pool failed: %v\n", err)
+		return
 	}
-	return fallback
+	defer pool.Close()
+
+	fmt.Println("🚀 YaFaD_ai Viral Traffic Simulator: Activated.")
+	fmt.Println("🌊 Generiere massive 'Upward Mobility' (T4 -> T0)...")
+
+	// Wir starten 10 parallele User-Gruppen (Threads)
+	var wg sync.WaitGroup
+	concurrency := 10
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			simulateUserBehavior(pool, id)
+		}(i)
+	}
+
+	wg.Wait()
 }
 
-func main() {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable",
-		getEnv("DB_USER", "eriks"), getEnv("DB_PASSWORD", "test"),
-		getEnv("DB_HOST", "localhost"), getEnv("DB_NAME", "yafad_test"))
-
+func simulateUserBehavior(pool *pgxpool.Pool, workerID int) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, connStr)
-	if err != nil {
-		panic(err)
-	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(workerID)))
 
-	fmt.Println("🎮 User Simulator Started: Emulating real-time traffic...")
+	// Tiers, in denen wir nach Daten suchen (wir bevorzugen tiefe Tiers, um Aufstieg zu erzwingen)
+	tiers := []string{"table4", "table3", "table2", "table1", "table0"}
 
 	for {
-		action := rand.Intn(10)
+		// 1. Zufälliges Tier auswählen (Zipf-artig: oft tief greifen, um alte Daten zu holen)
+		// Wir zwingen den Simulator, oft in T3/T4 zu suchen
+		targetTier := tiers[rng.Intn(len(tiers))]
 
-		if action < 3 { // 30% chance: New Data Inflow
-			newID := fmt.Sprintf("new_data_%d", rand.Int63())
-			fmt.Printf("✍️  User created new data: %s\n", newID)
-			conn.Exec(ctx, "INSERT INTO buffer_tier (id, payload, utility_index) VALUES ($1, $2, 1.0)",
-				newID, `{"type": "user_input", "content": "fresh_ai_prompt"}`)
-		} else { // 70% chance: Data Recall (Reinforcement)
-			// Pick a random tier and random record to "access"
-			tier := rand.Intn(5)
-			var id string
-			var payload string
+		// 2. Einen zufälligen Datensatz lesen (Reinforcement)
+		var id string
+		var payload string
 
-			err := conn.QueryRow(ctx, fmt.Sprintf("SELECT id, payload FROM table%d LIMIT 1 OFFSET %d", tier, rand.Intn(1000))).Scan(&id, &payload)
+		// TABLESAMPLE SYSTEM(0.1) ist extrem schnell, um zufällige Zeilen zu holen
+		query := fmt.Sprintf("SELECT id, payload FROM %s TABLESAMPLE SYSTEM(0.1) LIMIT 1", targetTier)
+		err := pool.QueryRow(ctx, query).Scan(&id, &payload)
+
+		if err == nil {
+			// 3. Promotion: Datensatz wurde "benutzt" -> Ab in den Buffer!
+			// Der Consolidator (setup_db.go) wird ihn dann nach T0 schieben.
+			_, err := pool.Exec(ctx, `
+				INSERT INTO buffer_tier (id, payload, utility_index, last_activity)
+				VALUES ($1, $2, 2.0, CURRENT_TIMESTAMP)
+				ON CONFLICT (id) DO UPDATE SET
+					utility_index = buffer_tier.utility_index + 1.0,
+					last_activity = CURRENT_TIMESTAMP;
+			`, id, payload)
 
 			if err == nil {
-				fmt.Printf("🔍 User accessed data: %s (Promoting to Buffer)\n", id)
-				// Promote to buffer (This is the Reinforcement logic)
-				conn.Exec(ctx, `INSERT INTO buffer_tier (id, payload, utility_index) 
-								VALUES ($1, $2, 1.0) ON CONFLICT (id) DO UPDATE SET utility_index = 1.0`, id, payload)
-				conn.Exec(ctx, fmt.Sprintf("DELETE FROM table%d WHERE id = $1", tier), id)
+				// Kleines Log nur ab und zu, um die Konsole nicht zu fluten
+				if rng.Intn(100) == 0 {
+					fmt.Printf("🔥 [Worker %d] Viral Hit! Promoting %s from %s -> T0\n", workerID, id, targetTier)
+				}
 			}
 		}
 
-		time.Sleep(500 * time.Millisecond) // Simulate human-like pace
+		// Kurze Pause für Realismus (10ms - 50ms)
+		time.Sleep(time.Duration(rng.Intn(40)+10) * time.Millisecond)
 	}
 }
