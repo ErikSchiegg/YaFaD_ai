@@ -71,6 +71,23 @@ $$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$
 > **Result:** A self-healing infrastructure that autonomously scales its internal "pressure" to handle sudden traffic spikes or long periods of inactivity without manual intervention.
 
 ---
+## 🌌 The Fractal Archive: Recursive Scaling
+
+<p align="center">
+  <img src="assets/recursive_architecture.jpg" alt="YaFaD_ai Recursive Fractal Architecture" width="100%">
+</p>
+
+True biological systems don't just "fill up"—they grow. When a brain needs more capacity, it branches new neural pathways. YaFaD_ai applies this **Fractal Logic** to data storage.
+
+### How it Works
+Instead of letting the "Cold Tier" (Table 4) become a monolithic bottleneck, YaFaD_ai treats it as a gateway. When the archive reaches critical mass, the system autonomously spawns a **Recursive Sub-System**:
+
+1.  **The Pressure Valve:** The system monitors latency and capacity in real-time.
+2.  **Fractal Branching:** "Cold" data doesn't just sit; it is migrated into a self-contained, deep-storage loop (`Archive_0` → `Archive_4`).
+3.  **Time Dilation:** In these deep fractal layers, the **Decay Lambda ($\lambda$)** runs 10x slower. Data here enters a state of "suspended animation"—ultra-low cost, organized, and retrievable, without clogging the high-speed arteries of the main system.
+
+> **Business Impact:** This architecture allows YaFaD_ai to maintain **sub-millisecond latency** on the hot tier, even while managing **Petabytes of historical data** in the background. It creates an infrastructure that is functionally infinite yet operationally lean.
+
 
 ## 🛠 Project Status & Roadmap
 
