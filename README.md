@@ -210,14 +210,16 @@ sequenceDiagram
     participant RUST as Rust Core (FFI)
     participant NEXT as Next Tier (T+1)
 
-    rect rgb(240, 248, 255)
-    note right of GO: Go handles I/O
+    %% High Contrast Blue Zone (Go / IO)
+    rect rgba(10, 41, 60, 1)
+    note right of GO: Zone 1: Go handles I/O
     loop Every N Seconds
         GO->>DB: SELECT id, last_activity, utility FROM T
         DB-->>GO: Record (u_last, time_delta)
         
-        rect rgb(255, 253, 231)
-        note right of RUST: Rust does Math (No GC)
+        %% High Contrast Yellow Zone (Rust / Math)
+        rect rgba(107, 97, 10, 1)
+        note right of RUST: Zone 2: Rust does Math (No GC)
         GO->>RUST: calculate_decay(u_last, lambda, delta_t)
         RUST-->>GO: return u_current
         end
