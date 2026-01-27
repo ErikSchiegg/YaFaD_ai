@@ -162,6 +162,129 @@ go run fractal_decay.go
 <p align="center"><img src="assets/test_suite.png" alt="YaFaD_ai Test Suite" width="100%"></p>
 
 ---
+# YaFaD_ai System Architecture
+
+## 1. System Overview (Component Diagram)
+
+Dieses Diagramm zeigt die hybride Architektur. Go handhabt die I/O-Last und Datenbank-Verbindungen, während das Rust-Core-Modul als "Gehirn" für die mathematischen Zerfallsberechnungen über eine performante CGO-Schnittstelle eingebunden ist.
+
+```mermaid
+graph TD
+    subgraph "The Nervous System (Go)"
+        style GW fill:#b3e5fc,stroke:#0288d1,stroke-width:2px,color:black
+        style API fill:#e1f5fe,stroke:#0288d1,color:black
+        API[User / Simulator] -->|Insects Data| GW[Go Workers]
+        GW -->|SQL Queries| DB_HOT[(Postgres: Hot Tier)]
+        GW -->|SQL Queries| DB_COLD[(Postgres: Cold Tier)]
+    end
+
+    subgraph "The Brain (Rust Core)"
+        style RC fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:black
+        style MATH fill:#fffde7,stroke:#fbc02d,color:black
+        style HEAP fill:#fffde7,stroke:#fbc02d,color:black
+        GW -- CGO Interface --> RC[libyafad_core.so]
+        RC -->|Calculate Decay| MATH[Decay Algorithm]
+        RC -->|Optimize Storage| HEAP[Memory Mgmt]
+    end
+
+    subgraph "Storage Layers"
+        style DB_HOT fill:#f5f5f5,stroke:#616161,color:black
+        style DB_COLD fill:#f5f5f5,stroke:#616161,color:black
+        style ARC fill:#e0e0e0,stroke:#616161,stroke-dasharray: 5 5,color:black
+        DB_HOT -.->|Migration| DB_COLD
+        DB_COLD -->|Fractal Dump| ARC[Archive 0..4]
+    end
+
+    %% Repariert: Nur Indices 0 bis 7 (da es genau 8 Pfeile gibt)
+    linkStyle 0,1,2,3,4,5,6,7 stroke-width:2px,fill:none,stroke:black;
+```
+
+## 2. Data Lifecycle (Sequence Diagram)
+
+Der Lebenszyklus eines Datensatzes verdeutlicht die strikte Aufgabenteilung: Der Go-Worker holt die Daten, übergibt die reinen Zahlenwerte an Rust zur Berechnung und führt basierend auf dem Ergebnis die Datenbank-Operationen aus. Der Garbage Collector von Go wird nicht belastet.
+
+```mermaid
+sequenceDiagram
+    participant DB as Postgres (Table T)
+    participant GO as Go Worker
+    participant RUST as Rust Core (FFI)
+    participant NEXT as Next Tier (T+1)
+
+    rect rgb(240, 248, 255)
+    note right of GO: Go handles I/O
+    loop Every N Seconds
+        GO->>DB: SELECT id, last_activity, utility FROM T
+        DB-->>GO: Record (u_last, time_delta)
+        
+        rect rgb(255, 253, 231)
+        note right of RUST: Rust does Math (No GC)
+        GO->>RUST: calculate_decay(u_last, lambda, delta_t)
+        RUST-->>GO: return u_current
+        end
+        
+        alt u_current < Threshold
+            GO->>NEXT: INSERT Record (Migration)
+            GO->>DB: DELETE Record
+        else u_current >= Threshold
+            GO->>DB: UPDATE utility = u_current
+        end
+    end
+    end
+```
+
+## 3. The Fractal Conveyor Belt (State Diagram)
+
+Das Herzstück von v0.2.0: Daten fließen von den heißen Tiers (Speicher/SSD) zum "Cold Gateway". Wenn dieses überläuft (>50k), werden Daten in das fraktale Archiv auf HDD/Tape ausgelagert, wo die Zeit (Lambda λ) um den Faktor 10 verlangsamt wird.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "Hot Storage (Mem/SSD)" as Hot {
+        [*] --> Table0
+        Table0 --> Table1: Fast Decay
+        Table1 --> Table2: Medium Decay
+    }
+
+    state "Cold Gateway" as Gateway {
+        Table2 --> Table3: Archive Buffer
+        Table3 --> Table4: The Monster
+        note right of Table4
+            Limit: 50k Records
+            "Pressure Valve"
+        end note
+    }
+
+    state "Fractal Archive (HDD/Tape)" as Fractal {
+        Table4 --> Archive0: Overflow
+        Archive0 --> Archive1: λ * 0.1
+        Archive1 --> Archive2: λ * 0.01
+        Archive2 --> Archive3: λ * 0.001
+        Archive3 --> Archive4: Deep Freeze
+    }
+
+    %% --- STYLING (Muss zwingend ausserhalb der Klammern stehen!) ---
+    
+    %% Gruppen-Farben
+    style Hot fill:#b3e5fc,stroke:#0288d1,color:black
+    style Gateway fill:#ffe0b2,stroke:#f57c00,color:black
+    style Fractal fill:#e0e0e0,stroke:#616161,color:black
+
+    %% Tabellen-Farben (Weiß mit Rand)
+    style Table0 fill:white,stroke:#0288d1,color:black
+    style Table1 fill:white,stroke:#0288d1,color:black
+    style Table2 fill:white,stroke:#0288d1,color:black
+    
+    style Table3 fill:white,stroke:#f57c00,color:black
+    style Table4 fill:white,stroke:#f57c00,color:black
+    
+    style Archive0 fill:white,stroke:#616161,color:black
+    style Archive1 fill:white,stroke:#616161,color:black
+    style Archive2 fill:white,stroke:#616161,color:black
+    style Archive3 fill:white,stroke:#616161,color:black
+    style Archive4 fill:white,stroke:#616161,color:black
+```
+---
 
 ## 🛠 Troubleshooting & CGO Setup
 
