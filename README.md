@@ -166,7 +166,7 @@ go run fractal_decay.go
 
 ## 1. System Overview (Component Diagram)
 
-Dieses Diagramm zeigt die hybride Architektur. Go handhabt die I/O-Last und Datenbank-Verbindungen, während das Rust-Core-Modul als "Gehirn" für die mathematischen Zerfallsberechnungen über eine performante CGO-Schnittstelle eingebunden ist.
+This diagram illustrates the hybrid architecture. Go manages I/O load and database connections, while the Rust Core module acts as the 'brain' for mathematical decay calculations, integrated via a high-performance CGO interface.
 
 ```mermaid
 graph TD
@@ -201,7 +201,7 @@ graph TD
 
 ## 2. Data Lifecycle (Sequence Diagram)
 
-Der Lebenszyklus eines Datensatzes verdeutlicht die strikte Aufgabenteilung: Der Go-Worker holt die Daten, übergibt die reinen Zahlenwerte an Rust zur Berechnung und führt basierend auf dem Ergebnis die Datenbank-Operationen aus. Der Garbage Collector von Go wird nicht belastet.
+The record lifecycle demonstrates a strict separation of concerns: The Go worker retrieves data, passes raw numerical values to Rust for computation, and executes database operations based on the results. This ensures the Go Garbage Collector remains unburdened by heavy math.
 
 ```mermaid
 sequenceDiagram
@@ -234,7 +234,7 @@ sequenceDiagram
 
 ## 3. The Fractal Conveyor Belt (State Diagram)
 
-Das Herzstück von v0.2.0: Daten fließen von den heißen Tiers (Speicher/SSD) zum "Cold Gateway". Wenn dieses überläuft (>50k), werden Daten in das fraktale Archiv auf HDD/Tape ausgelagert, wo die Zeit (Lambda λ) um den Faktor 10 verlangsamt wird.
+The core of v0.2.0: Data flows from Hot Tiers (Memory/SSD) into the 'Cold Gateway'. Upon overflow (>50k records), data is offloaded into the fractal archive (HDD/Tape), where time (Lambda λ) is dilated by a factor of 10.
 
 ```mermaid
 stateDiagram-v2
