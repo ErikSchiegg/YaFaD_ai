@@ -89,12 +89,37 @@ Instead of letting the "Cold Tier" (Table 4) become a monolithic bottleneck, YaF
 > **Business Impact:** This architecture allows YaFaD_ai to maintain **sub-millisecond latency** on the hot tier, even while managing **Petabytes of historical data** in the background. It creates an infrastructure that is functionally infinite yet operationally lean.
 
 ---
-## 🌌 Black hole mechanism deleting or dumping records that have sedimented to the bottom of all archives
+## 🌌 Black Hole Mechanism: Entropy & The Event Horizon
+
+> *"Ignorance (of trivial things) is bliss"*
 
 <p align="center">
   <img src="assets/black_hole_mechanism.png" alt="YaFaD_ai Black Hole unused data dumping mechanism" width="100%">
-</p
+</p>
 
+Just as a biological brain actively prunes unused synapses to maintain plasticity, **YaFaD_ai** enforces a strict metabolic limit on data retention. We do not simply "delete" old files; we subject them to an **Event Horizon** check.
+
+Data does not sit idle; it fights for survival against a constant mathematical decay.
+
+### The Decay Function
+At every tick, the core Rust engine (`yafad_core`) calculates the remaining utility $U$ of a record based on the time elapsed $\Delta t$ and a configured decay constant $\lambda$ (the "forgetting curve"):
+
+$$
+U_{new} = U_{current} \cdot e^{-\lambda \Delta t}
+$$
+
+### The Event Horizon ($\epsilon$)
+Once the utility of a record slips below the critical **Horizon Threshold** ($\epsilon$), it is no longer considered biologically viable. The system triggers a phase transition:
+
+$$
+Action = \begin{cases} \text{Keep} & \text{if } U_{new} > \epsilon \\ \text{Vaporize} & \text{if } U_{new} \le \epsilon \end{cases}
+$$
+
+* **Vaporize:** The record is permanently expunged from the active index. It creates a vacuum that keeps the system lean and performant.
+* **Sedimentation (Optional):** In configured "Archive" modes, vaporized data is not destroyed but "Cast in Amber"—compressed into deep cold storage (sediment) where it requires zero operational energy to maintain.
+
+> **Operational Impact:** This mechanism ensures the database remains $O(1)$ efficient regardless of total lifespan, as the "active" population of records stabilizes naturally according to the usage pressure.
+---
 ## 🛠 Project Status & Roadmap
 
 | Component | Status | Tech Stack |
