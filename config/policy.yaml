@@ -1,0 +1,15 @@
+# config/policy.yaml
+
+event_horizon:
+  enabled: true
+  # Threshold: If utility drops below this value, the Event Horizon engages.
+  threshold: 0.0001 
+  
+  # Action Mode: 
+  # "DELETE"  -> The Void (Permanent deletion, max energy saving)
+  # "GLACIER" -> The Amber (Export to Tape/File for fossilization)
+  mode: "DELETE" 
+  
+  # Dump Path: Only required for "GLACIER" mode.
+  # Where should the metabolic waste be stored?
+  dump_path: "./mnt/tape_archive/fossils/"
