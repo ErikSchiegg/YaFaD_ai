@@ -89,9 +89,12 @@ Instead of letting the "Cold Tier" (Table 4) become a monolithic bottleneck, YaF
 > **Business Impact:** This architecture allows YaFaD_ai to maintain **sub-millisecond latency** on the hot tier, even while managing **Petabytes of historical data** in the background. It creates an infrastructure that is functionally infinite yet operationally lean.
 
 ---
+## 🌌 The Black hole mechanism deleting or dumping externally to to bottom of the last archive sedimented records
+
 <p align="center">
   <img src="assets/black_hole_mechanism.png" alt="YaFaD_ai Black Hole unused data dumping mechanism" width="100%">
 </p
+
 ## 🛠 Project Status & Roadmap
 
 | Component | Status | Tech Stack |
