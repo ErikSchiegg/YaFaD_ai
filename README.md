@@ -94,19 +94,33 @@ Instead of letting the "Cold Tier" (Table 4) become a monolithic bottleneck, YaF
 > *"Ignorance (of trivial things) is bliss"*
 
 <p align="center">
-  <img src="assets/black_hole_mechanism.png" alt="YaFaD_ai Black Hole unused data dumping mechanism" width="100%">
+  <img src="assets/black_hole_mechanism.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
 </p>
 
-Just as a biological brain actively prunes unused synapses to maintain plasticity, **YaFaD_ai** enforces a strict metabolic limit on data retention. We do not simply "delete" old files; we subject them to an **Event Horizon** check.
+To maintain operational plasticity, **YaFaD_ai** mimics biological synaptic pruning. Instead of static retention policies, every data record possesses a "Will to Live" (Utility $U$) that fights against a constant, system-wide metabolic pressure ($\lambda$).
 
-Data does not sit idle; it fights for survival against a constant mathematical decay.
-
-### The Decay Function
-At every tick, the core Rust engine (`yafad_core`) calculates the remaining utility $U$ of a record based on the time elapsed $\Delta t$ and a configured decay constant $\lambda$ (the "forgetting curve"):
+### The Mathematical Decay
+Records decay exponentially over time ($\Delta t$). Once a record's utility falls below the critical **Event Horizon** ($\epsilon$), it is identified as metabolic waste.
 
 $$
-U_{new} = U_{current} \cdot e^{-\lambda \Delta t}
+U_{new} = U_{current} \cdot e^{-\lambda \Delta t} \quad \xrightarrow{\text{check}} \quad \text{if } U_{new} < \epsilon \implies \text{VAPORIZE}
 $$
+
+
+### Estimated Lifespan ($T_{TTL}$): System Peristalsis
+
+Unlike static retention policies (e.g., "delete after 30 days"), YaFaD_ai's retention is **homeostatic**. The system regulates the lifespan of inactive records based on its current stress level.
+
+Think of $\lambda$ as the **rate of peristalsis** (digestive movement) in the system's tract. The controller adjusts this rate to ensure the system processes data just as fast as it ingests it.
+
+$$
+T_{TTL} \approx \frac{9.21}{\lambda} \quad \text{(Inverse relationship)}
+$$
+
+| System Load | $\lambda$ (Peristalsis) | Data Lifespan | Biological Analogy |
+| :--- | :--- | :--- | :--- |
+| **High Stress** 🥵 | **⬆️ Fast** | **Short** | **Rapid Digestion:** To prevent "constipation" (storage overflow), the system accelerates the metabolism. Weak memories are vaporized quickly to clear the path for new input. |
+| **Relaxed** 🧘 | **⬇️ Slow** | **Long** | **Slow Absorption:** Without pressure, the system slows down. Even low-utility data is retained longer ("sedimentation"), allowing for deep retrieval of older context. |
 
 ### The Event Horizon ($\epsilon$)
 Once the utility of a record slips below the critical **Horizon Threshold** ($\epsilon$), it is no longer considered biologically viable. The system triggers a phase transition:
@@ -120,6 +134,7 @@ $$
 
 > **Operational Impact:** This mechanism ensures the database remains $O(1)$ efficient regardless of total lifespan, as the "active" population of records stabilizes naturally according to the usage pressure.
 ---
+
 ## 🛠 Project Status & Roadmap
 
 | Component | Status | Tech Stack |

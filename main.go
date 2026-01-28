@@ -7,16 +7,22 @@ package main
 import "C"
 
 import (
+	"database/sql" // Wichtig für sql.DB
 	"log"
 	"time"
-	// "fmt" falls nötig
+
+	// Falls dein Modul in go.mod "github.com/DeinName/YaFaD_ai" heißt,
+	// musst du den Pfad hier anpassen!
+	"YaFaD_ai/internal/monitoring"
+
+	_ "github.com/lib/pq" // Postgres Treiber nicht vergessen (Blank Import)
 )
 
-// PolicyConfig mimics the yaml structure (simplified for this example)
+// PolicyConfig mimics the yaml structure
 type PolicyConfig struct {
 	Enabled   bool
 	Threshold float64
-	Mode      string // "DELETE" or "GLACIER"
+	Mode      string
 	DumpPath  string
 }
 
@@ -29,51 +35,76 @@ type Record struct {
 }
 
 func main() {
-	// 1. Setup: Load Config & Database
 	log.Println("🚀 YaFaD_ai Worker v0.2.0 starting...")
 	log.Println("🇺🇸 Mode: US-Optimized | Policy: Radical Efficiency")
 
-	// MOCK: Load this from config/policy.yaml in real code
+	// --- 1. DB Verbindung herstellen (FEHLTE VORHER) ---
+	// Hier musst du deinen echten Connection-String eintragen!
+	connStr := "user=postgres password=secret dbname=yafad sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Optional: Verbindung testen
+	if err := db.Ping(); err != nil {
+		log.Printf("⚠️ Warning: DB connection failed: %v", err)
+		// Wir machen weiter für den Demo-Modus, aber in Echt wäre hier Schluss.
+	}
+
+	// --- 2. Config Setup ---
 	policy := PolicyConfig{
 		Enabled:   true,
 		Threshold: 0.0001,
-		Mode:      "DELETE", // or "GLACIER"
+		Mode:      "DELETE",
 		DumpPath:  "./mnt/tape_archive/fossils/",
 	}
 
-	// 2. The Main Loop (The Heartbeat)
-	ticker := time.NewTicker(1 * time.Second) // Check every second
+	// --- 3. Monitoring Starten (Hintergrund) ---
+
+	getCurrentLambda := func() float64 {
+		return 0.0085 // Später dynamisch aus dem PID Controller holen
+	}
+
+	monitorConfig := monitoring.Config{
+		Interval:  10 * time.Second,
+		TargetPhi: 1.618,
+	}
+
+	// Hier übergeben wir das 'db' Objekt, das wir oben erstellt haben
+	monitoring.StartMonitor(db, monitorConfig, getCurrentLambda)
+	log.Println("📊 Monitoring background service started...")
+
+	// --- 4. Main Loop (Vordergrund) ---
+
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		// In a real scenario, you query the DB here for records to update.
-		// For this example, we pretend we found a dying record.
+	log.Println("⚙️ Worker Loop active. Press Ctrl+C to stop.")
 
+	// WICHTIG: Das 'select {}' ist weg! Wir nutzen den Loop als Blocker.
+	for range ticker.C {
+		// Mock: Wir tun so, als hätten wir einen sterbenden Record gefunden
 		mockRecord := Record{
 			ID:       "record_xyz_123",
-			Utility:  0.00005, // Very low utility!
+			Utility:  0.00005,
 			Lambda:   0.5,
 			LastSeen: time.Now().Add(-100 * time.Hour),
 		}
 
-		// THIS is where we call the executioner function defined below
 		processRecord(mockRecord, policy)
 	}
 }
 
 // ---------------------------------------------------------
-// HELPER FUNCTIONS (The Executioner) - Place them here
+// HELPER FUNCTIONS
 // ---------------------------------------------------------
 
 func processRecord(rec Record, policy PolicyConfig) {
-
-	// Calculate time delta in hours (or whatever unit Rust expects)
 	timeDelta := time.Since(rec.LastSeen).Hours()
 
-	// -----------------------------------------------------
-	// CALLING THE BRAIN (Rust via CGO)
-	// -----------------------------------------------------
-	// Note: We cast Go types to C types (C.double)
+	// Call Rust
 	result := C.calculate_decay_with_horizon(
 		C.double(rec.Utility),
 		C.double(rec.Lambda),
@@ -81,38 +112,19 @@ func processRecord(rec Record, policy PolicyConfig) {
 		C.double(policy.Threshold),
 	)
 
-	// -----------------------------------------------------
-	// EXECUTING THE VERDICT
-	// -----------------------------------------------------
-
-	// Access the enum action from the result struct
-	// Assuming logic: 0=Keep, 1=Migrate, 2=Vaporize
+	// Execute Verdict
 	switch result.action {
-
-	case 2: // Action::Vaporize (Event Horizon)
+	case 2: // Vaporize
 		if policy.Mode == "DELETE" {
-			// Option A: The Void
 			log.Printf("💀 Event Horizon reached for ID %s (U=%.6f). VAPORIZING immediately.",
 				rec.ID, float64(result.new_utility))
-
-			// SQL: db.Exec("DELETE FROM archive WHERE id=$1", rec.ID)
-
+			// db.Exec("DELETE FROM archive WHERE id=$1", rec.ID)
 		} else if policy.Mode == "GLACIER" {
-			// Option B: The Metabolic Dump
-			log.Printf("❄️ Event Horizon reached for ID %s. Dumping to GLACIER tape at %s.",
-				rec.ID, policy.DumpPath)
-
-			// func: writeToJSON(rec, policy.DumpPath)
-			// SQL: db.Exec("DELETE FROM archive WHERE id=$1", rec.ID)
+			log.Printf("❄️ Event Horizon reached for ID %s. Dumping to GLACIER.", rec.ID)
 		}
-
-	case 1: // Action::Migrate
-		log.Printf("📦 Utility dropped. Migrating ID %s to next Tier.", rec.ID)
-		// SQL logic to move table...
-
-	default: // Action::Keep (0)
-		// Just update the new utility score
-		// log.Printf("✅ ID %s remains active. New Utility: %.6f", rec.ID, float64(result.new_utility))
-		// SQL: db.Exec("UPDATE ...", ...)
+	case 1: // Migrate
+		log.Printf("📦 Utility dropped. Migrating ID %s.", rec.ID)
+	default: // Keep
+		// log.Printf("✅ ID %s remains active.", rec.ID)
 	}
 }
