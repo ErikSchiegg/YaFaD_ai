@@ -71,7 +71,6 @@ func main() {
 	}
 
 	hotConnStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
-	// Simulation: Gleiche DB, aber logisch getrennt für High/Low Performance Simulation
 	coldConnStr := hotConnStr
 
 	ctx := context.Background()
@@ -92,31 +91,31 @@ func main() {
 	fmt.Println("📉 YaFaD_ai Federated Decay Engine: Active.")
 
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(4) // Wir starten 4 Worker
 
-	baseLambda := 0.005
-	minLambda := 0.001
-	maxLambda := 0.5 //fast flushing
+	// T0 -> T1: DER HOCHOFEN (Extrem Aggressiv: Max Lambda 5.0)
+	go func() {
+		defer wg.Done()
+		runHomeostaticWorker(router, 0, 0.01, 0.001, 5.0, 1*time.Millisecond, 100*time.Millisecond)
+	}()
 
-	// T0 -> T1
+	// T1 -> T2: DER DURCHLAUFERHITZER (Aggressiv: Max Lambda 2.0)
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 0, baseLambda, minLambda, maxLambda, 10*time.Millisecond, 500*time.Millisecond)
+		runHomeostaticWorker(router, 1, 0.01, 0.001, 2.0, 10*time.Millisecond, 500*time.Millisecond)
 	}()
-	// T1 -> T2
+
+	// T2 -> T3: DIE BRÜCKE (Standard: Max Lambda 1.0)
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 1, baseLambda, minLambda, maxLambda, 500*time.Millisecond, 2*time.Second)
+		runHomeostaticWorker(router, 2, 0.005, 0.001, 1.0, 50*time.Millisecond, 1*time.Second)
 	}()
-	// T2 -> T3 (Brücke)
+
+	// T3 -> T4: DAS SEDIMENT (Langsamer: Max Lambda 0.05)
+	// Dieser Block fehlte, weshalb wg.Wait() ewig gewartet hätte!
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 2, baseLambda, minLambda, maxLambda, 1*time.Second, 4*time.Second)
-	}()
-	// T3 -> T4
-	go func() {
-		defer wg.Done()
-		runHomeostaticWorker(router, 3, baseLambda, minLambda, maxLambda, 5*time.Second, 30*time.Second)
+		runHomeostaticWorker(router, 3, 0.005, 0.001, 0.05, 1*time.Second, 10*time.Second)
 	}()
 
 	wg.Wait()
@@ -133,6 +132,9 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 	sourceTable := fmt.Sprintf("table%d", sourceTier)
 	targetTable := fmt.Sprintf("table%d", targetTier)
 
+	// Standard Batch Size
+	baseBatchSize := 1000
+
 	for {
 		sourcePool := router.GetPool(sourceTier)
 		targetPool := router.GetPool(targetTier)
@@ -141,46 +143,49 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 		targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", targetTable)).Scan(&targetCount)
 
-		// --- BIO-FEEDBACK PID LOGIC (Non-Linear) ---
+		// --- ADAPTIVE CONTROL ---
+		currentBatchSize := baseBatchSize
+		isEmergency := false
+
 		if sourceCount > 0 && targetCount > 0 {
 			currentRatio := float64(targetCount) / float64(sourceCount)
+			diff := PHI - currentRatio
 
-			// Wie weit sind wir vom Goldenen Schnitt weg?
-			// Bei PHI (1.618) ist diff = 0.
-			// Bei Verstopfung (Ratio 0.1) ist diff = ~1.5 (RIESIG!)
-			diff := currentRatio - PHI
-
-			// Basis-Anpassung (5%)
-			baseAdjustment := 0.05
-
-			if diff > 0 {
-				// Zu viele Daten im Ziel (Stau unten) -> BREMSEN (Lambda senken)
-				// Hier reicht linear, Bremsen ist unkritisch
-				currentLambda *= (1.0 - baseAdjustment)
+			// PID Logik
+			if currentRatio > PHI {
+				// Ziel ist voll -> Langsamer machen
+				currentLambda *= 0.95
 			} else {
-				// Zu wenig Daten im Ziel (Stau HIER) -> GAS GEBEN (Lambda erhöhen)
-				// Wir nutzen den Fehler im Quadrat als Turbo!
-				// Je größer der Fehler (diff), desto gewaltiger der Sprung.
-
+				// Ziel ist leer / Quelle ist voll -> GAS GEBEN
+				// Quadratischer Fehler für Lambda
 				errorMagnitude := math.Abs(diff)
-
-				// Beispiel:
-				// Fehler 0.1 -> Aggression = 0.01 (sanft)
-				// Fehler 1.5 -> Aggression = 2.25 (BRUTAL!)
 				aggression := math.Pow(errorMagnitude, 2.0)
 
-				// Der neue Multiplikator: 1.0 + 5% + Der Turbo
-				multiplier := 1.0 + baseAdjustment + aggression
-
+				multiplier := 1.0 + 0.05 + aggression
 				currentLambda *= multiplier
 
-				// Optional: Logging, wenn der Turbo zündet
-				if aggression > 0.5 {
-					fmt.Printf("🚀 TURBO BOOST: Error %.2f triggers Multiplier %.2fx\n", errorMagnitude, multiplier)
+				// --- ADAPTIVE BATCH SIZE ---
+				// Wenn die Hütte brennt (Aggression hoch), nimm eine größere Schaufel!
+				if aggression > 1.0 {
+					// Skaliere BatchSize mit der Panik.
+					extraShovel := int(aggression * 2000)
+					currentBatchSize += extraShovel
+
+					// Deckeln bei vernünftigem Maximum
+					if currentBatchSize > 20000 {
+						currentBatchSize = 20000
+					}
+
+					isEmergency = true
+					// Log nur bei extremen Werten um Spam zu vermeiden
+					if aggression > 3.0 {
+						fmt.Printf("🚜 [%s->%s] MASSIVE LOAD: BatchSize set to %d | Multiplier %.1fx\n",
+							colorize(sourceTable), colorize(targetTable), currentBatchSize, multiplier)
+					}
 				}
 			}
 
-			// Clamping (Sicherheitsgrenzen)
+			// Clamping
 			if currentLambda < min {
 				currentLambda = min
 			}
@@ -189,10 +194,13 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
-		// --- Decay & Migration Logic ---
+		// --- DECAY LOOP ---
 		workFound := false
 		if sourceCount > 0 {
-			rows, err := sourcePool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000", sourceTable))
+			// Nutze die dynamische BatchSize
+			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT %d", sourceTable, currentBatchSize)
+			rows, err := sourcePool.Query(ctx, query)
+
 			if err == nil {
 				for rows.Next() {
 					var id, payload string
@@ -201,14 +209,16 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 					rows.Scan(&id, &uLast, &lastActivity, &payload)
 
 					deltaT := time.Since(lastActivity).Hours()
-					// Call Rust
 					uNow := float64(C.calculate_decay(C.double(uLast), C.double(currentLambda), C.double(deltaT)))
 
 					if uNow < threshold {
 						success := migrateRecord(ctx, sourcePool, targetPool, sourceTable, targetTable, id, payload, uNow, lastActivity)
 						if success {
 							workFound = true
-							time.Sleep(1 * time.Millisecond) // CPU Yield
+							// KEIN Sleep im Loop bei Notfall
+							if !isEmergency {
+								time.Sleep(10 * time.Microsecond)
+							}
 						}
 					}
 				}
@@ -216,37 +226,36 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
-		// --- Logging with Colors ---
+		// --- ADAPTIVE SLEEP ---
 		if workFound {
-			if sourcePool != targetPool {
-				// Brücken-Migration (Hot -> Cold)
-				fmt.Printf("🌉 [%s->%s] Migrated across Storage Zones | λ: %.5f\n",
-					colorize(sourceTable), colorize(targetTable), currentLambda)
+			if isEmergency {
+				currentSleep = 1 * time.Millisecond // Herzrasen
 			} else {
-				// Interne Migration
+				// Normales Logging (vereinfacht)
 				ratio := float64(targetCount) / math.Max(1, float64(sourceCount))
-				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
-					colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
-			}
-
-			// Adaptiver Sleep: Wenn Arbeit da ist, arbeite schneller
-			currentSleep /= 2
-			if currentSleep < minSleep {
-				currentSleep = minSleep
+				// Um den Log sauber zu halten, nur loggen wenn nicht Emergency, oder spezifische Trigger
+				if !isEmergency {
+					fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
+						colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
+				}
+				currentSleep /= 2
+				if currentSleep < minSleep {
+					currentSleep = minSleep
+				}
 			}
 		} else {
-			// Adaptiver Sleep: Wenn nichts zu tun ist, schlaf länger
 			currentSleep *= 2
 			if currentSleep > maxSleep {
 				currentSleep = maxSleep
 			}
 		}
+
 		time.Sleep(currentSleep)
 	}
 }
 
 func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, sourceTable, targetTable, id, payload string, uNow float64, lastActivity time.Time) bool {
-	// Transaction Logic (gleicher Code wie vorher, nur ausgeblendet der Übersicht halber)
+	// Transaction Logic
 	if sourcePool == targetPool {
 		tx, err := sourcePool.Begin(ctx)
 		if err != nil {
@@ -263,7 +272,7 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 		}
 		return tx.Commit(ctx) == nil
 	} else {
-		// Cross-Pool Migration (langsamer)
+		// Cross-Pool Migration
 		time.Sleep(20 * time.Millisecond)
 		_, err := targetPool.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable), id, payload, uNow, lastActivity)
 		if err != nil {
