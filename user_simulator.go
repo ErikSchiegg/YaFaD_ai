@@ -2,82 +2,167 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"math/rand"
-	"sync"
+	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/lib/pq"
+)
+
+// --- Configuration ---
+const (
+	TotalDuration    = 10 * time.Minute // Wie lange der Test insgesamt läuft
+	SwitchPhaseEvery = 30 * time.Second // Wie oft sich das Wetter ändert
+)
+
+// TrafficPhase definiert die Stimmung des Users
+type TrafficPhase string
+
+const (
+	PhaseMorningRush TrafficPhase = "☀️ MORNING RUSH (Steady High Load)"
+	PhaseCoffeeBreak TrafficPhase = "☕ COFFEE BREAK (Low Activity)"
+	PhaseViralSpike  TrafficPhase = "🔥 VIRAL SPIKE (Extreme Burst)"
+	PhaseNightMode   TrafficPhase = "🌙 NIGHT MODE (Deep Decay Time)"
 )
 
 func main() {
-	connStr := "postgres://eriks:test@localhost:5432/yafad_test?sslmode=disable"
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, connStr)
+	// 1. DB Connection
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "eriks"
+	}
+	dbPass := os.Getenv("DB_PASSWORD")
+	if dbPass == "" {
+		dbPass = "test"
+	}
+	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
+
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		fmt.Printf("❌ Pool failed: %v\n", err)
-		return
+		log.Fatal(err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
-	fmt.Println("🚀 YaFaD_ai Viral Traffic Simulator: Activated.")
-	fmt.Println("🌊 Generiere massive 'Upward Mobility' (T4 -> T0)...")
+	// 2. Setup
+	rand.Seed(time.Now().UnixNano())
+	log.Println("🤖 Bio-Rhythm User Simulator v0.3.0 starting...")
+	log.Printf("⏱️  Duration: %v | Phase Switch: %v\n", TotalDuration, SwitchPhaseEvery)
 
-	// Wir starten 10 parallele User-Gruppen (Threads)
-	var wg sync.WaitGroup
-	concurrency := 10
+	// 3. The Loop
+	startTime := time.Now()
+	phaseTicker := time.NewTicker(SwitchPhaseEvery)
+	defer phaseTicker.Stop()
 
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			simulateUserBehavior(pool, id)
-		}(i)
-	}
+	// HIER WAR DER FEHLER: Nutze jetzt konsistent PhaseMorningRush
+	currentPhase := PhaseMorningRush
 
-	wg.Wait()
-}
+	// Statistik
+	requests := 0
 
-func simulateUserBehavior(pool *pgxpool.Pool, workerID int) {
-	ctx := context.Background()
-	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(workerID)))
+	for time.Since(startTime) < TotalDuration {
+		select {
+		case <-phaseTicker.C:
+			// Wähle eine neue Phase zufällig
+			r := rand.Intn(4)
+			switch r {
+			case 0:
+				currentPhase = PhaseMorningRush // Korrigiert
+			case 1:
+				currentPhase = PhaseCoffeeBreak
+			case 2:
+				currentPhase = PhaseViralSpike
+			case 3:
+				currentPhase = PhaseNightMode
+			}
+			log.Printf("\n🔁 PHASE SWITCH: %s\n", currentPhase)
 
-	// Tiers, in denen wir nach Daten suchen (wir bevorzugen tiefe Tiers, um Aufstieg zu erzwingen)
-	tiers := []string{"table4", "table3", "table2", "table1", "table0"}
+		default:
+			// Führe Aktionen basierend auf der Phase aus
+			performUserAction(db, currentPhase)
+			requests++
 
-	for {
-		// 1. Zufälliges Tier auswählen (Zipf-artig: oft tief greifen, um alte Daten zu holen)
-		// Wir zwingen den Simulator, oft in T3/T4 zu suchen
-		targetTier := tiers[rng.Intn(len(tiers))]
-
-		// 2. Einen zufälligen Datensatz lesen (Reinforcement)
-		var id string
-		var payload string
-
-		// TABLESAMPLE SYSTEM(0.1) ist extrem schnell, um zufällige Zeilen zu holen
-		query := fmt.Sprintf("SELECT id, payload FROM %s TABLESAMPLE SYSTEM(0.1) LIMIT 1", targetTier)
-		err := pool.QueryRow(ctx, query).Scan(&id, &payload)
-
-		if err == nil {
-			// 3. Promotion: Datensatz wurde "benutzt" -> Ab in den Buffer!
-			// Der Consolidator (setup_db.go) wird ihn dann nach T0 schieben.
-			_, err := pool.Exec(ctx, `
-				INSERT INTO buffer_tier (id, payload, utility_index, last_activity)
-				VALUES ($1, $2, 2.0, CURRENT_TIMESTAMP)
-				ON CONFLICT (id) DO UPDATE SET
-					utility_index = buffer_tier.utility_index + 1.0,
-					last_activity = CURRENT_TIMESTAMP;
-			`, id, payload)
-
-			if err == nil {
-				// Kleines Log nur ab und zu, um die Konsole nicht zu fluten
-				if rng.Intn(100) == 0 {
-					fmt.Printf("🔥 [Worker %d] Viral Hit! Promoting %s from %s -> T0\n", workerID, id, targetTier)
-				}
+			// Visuelles Feedback alle 1000 Requests
+			if requests%1000 == 0 {
+				fmt.Print(".")
 			}
 		}
-
-		// Kurze Pause für Realismus (10ms - 50ms)
-		time.Sleep(time.Duration(rng.Intn(40)+10) * time.Millisecond)
 	}
+
+	log.Println("\n✅ Simulation complete.")
+}
+
+func performUserAction(db *sql.DB, phase TrafficPhase) {
+	ctx := context.Background()
+
+	// 1. Wie lange schlafen wir zwischen Aktionen? (Die Frequenz)
+	var sleepDuration time.Duration
+	var batchSize int
+
+	switch phase {
+	case PhaseMorningRush: // Korrigiert
+		// Stetiger Fluss: 5ms - 20ms Pause
+		sleepDuration = time.Duration(rand.Intn(15)+5) * time.Millisecond
+		batchSize = 1 // Einzelne User
+
+	case PhaseCoffeeBreak:
+		// Faul: 200ms - 1s Pause
+		sleepDuration = time.Duration(rand.Intn(800)+200) * time.Millisecond
+		batchSize = 1
+
+	case PhaseViralSpike:
+		// Panik: 0ms Pause (So schnell es geht), aber manchmal kurze Atempausen
+		if rand.Float32() < 0.9 {
+			sleepDuration = 0
+		} else {
+			sleepDuration = 10 * time.Millisecond
+		}
+		batchSize = 10 // Bulk Inserts simulieren
+
+	case PhaseNightMode:
+		// Fast tot: 1s - 3s Pause
+		sleepDuration = time.Duration(rand.Intn(2000)+1000) * time.Millisecond
+		batchSize = 0 // Manchmal gar nichts tun
+	}
+
+	time.Sleep(sleepDuration)
+
+	if batchSize == 0 {
+		return
+	}
+
+	// 2. Was tun wir? (Insert vs. Update/Read)
+	actionRoll := rand.Float32()
+
+	if actionRoll < 0.3 {
+		// 30% Chance: NEUE DATEN (Ingest)
+		createRecords(ctx, db, batchSize)
+	} else {
+		// 70% Chance: ALTE DATEN LESEN (Viral Hit / Refresh)
+		simulateViralHit(ctx, db)
+	}
+}
+
+func createRecords(ctx context.Context, db *sql.DB, count int) {
+	for i := 0; i < count; i++ {
+		id := fmt.Sprintf("rec_%d_%d", time.Now().UnixNano(), rand.Intn(100000))
+		_, err := db.ExecContext(ctx,
+			"INSERT INTO table0 (id, payload, utility_index, last_activity) VALUES ($1, 'user_data', 1.0, NOW()) ON CONFLICT DO NOTHING",
+			id)
+		if err != nil {
+			// Fehler ignorieren
+		}
+	}
+}
+
+func simulateViralHit(ctx context.Context, db *sql.DB) {
+	tier := rand.Intn(3) + 1
+	tableName := fmt.Sprintf("table%d", tier)
+
+	// Refresh eines zufälligen Records (erhöht Lebensdauer)
+	query := fmt.Sprintf("UPDATE %s SET utility_index = 1.0, last_activity = NOW() WHERE id IN (SELECT id FROM %s LIMIT 1)", tableName, tableName)
+
+	db.ExecContext(ctx, query)
 }
