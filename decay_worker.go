@@ -19,6 +19,34 @@ import (
 
 const PHI = 1.61803398875
 
+// --- ANSI Colors for Thermodynamics ---
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[1;31m" // T0: Hot
+	ColorYellow = "\033[1;33m" // T1: Warm
+	ColorGreen  = "\033[1;32m" // T2: Stable
+	ColorCyan   = "\033[1;36m" // T3: Cold
+	ColorBlue   = "\033[1;34m" // T4: Glacier
+)
+
+// Helper to colorize table names based on Tier ID
+func colorize(tableName string) string {
+	switch tableName {
+	case "table0":
+		return ColorRed + tableName + ColorReset
+	case "table1":
+		return ColorYellow + tableName + ColorReset
+	case "table2":
+		return ColorGreen + tableName + ColorReset
+	case "table3":
+		return ColorCyan + tableName + ColorReset
+	case "table4":
+		return ColorBlue + tableName + ColorReset
+	default:
+		return tableName
+	}
+}
+
 // --- 1. The Storage Router ---
 type StorageRouter struct {
 	HotPool  *pgxpool.Pool // T0, T1, T2
@@ -43,7 +71,8 @@ func main() {
 	}
 
 	hotConnStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
-	coldConnStr := hotConnStr // Simulation: Gleiche DB, aber logisch getrennt
+	// Simulation: Gleiche DB, aber logisch getrennt für High/Low Performance Simulation
+	coldConnStr := hotConnStr
 
 	ctx := context.Background()
 	hotPool, err := pgxpool.New(ctx, hotConnStr)
@@ -67,7 +96,7 @@ func main() {
 
 	baseLambda := 0.005
 	minLambda := 0.001
-	maxLambda := 0.05
+	maxLambda := 0.5 //fast flushing
 
 	// T0 -> T1
 	go func() {
@@ -112,13 +141,46 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 		targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", targetTable)).Scan(&targetCount)
 
+		// --- BIO-FEEDBACK PID LOGIC (Non-Linear) ---
 		if sourceCount > 0 && targetCount > 0 {
 			currentRatio := float64(targetCount) / float64(sourceCount)
-			if currentRatio > PHI {
-				currentLambda *= 0.95
+
+			// Wie weit sind wir vom Goldenen Schnitt weg?
+			// Bei PHI (1.618) ist diff = 0.
+			// Bei Verstopfung (Ratio 0.1) ist diff = ~1.5 (RIESIG!)
+			diff := currentRatio - PHI
+
+			// Basis-Anpassung (5%)
+			baseAdjustment := 0.05
+
+			if diff > 0 {
+				// Zu viele Daten im Ziel (Stau unten) -> BREMSEN (Lambda senken)
+				// Hier reicht linear, Bremsen ist unkritisch
+				currentLambda *= (1.0 - baseAdjustment)
 			} else {
-				currentLambda *= 1.05
+				// Zu wenig Daten im Ziel (Stau HIER) -> GAS GEBEN (Lambda erhöhen)
+				// Wir nutzen den Fehler im Quadrat als Turbo!
+				// Je größer der Fehler (diff), desto gewaltiger der Sprung.
+
+				errorMagnitude := math.Abs(diff)
+
+				// Beispiel:
+				// Fehler 0.1 -> Aggression = 0.01 (sanft)
+				// Fehler 1.5 -> Aggression = 2.25 (BRUTAL!)
+				aggression := math.Pow(errorMagnitude, 2.0)
+
+				// Der neue Multiplikator: 1.0 + 5% + Der Turbo
+				multiplier := 1.0 + baseAdjustment + aggression
+
+				currentLambda *= multiplier
+
+				// Optional: Logging, wenn der Turbo zündet
+				if aggression > 0.5 {
+					fmt.Printf("🚀 TURBO BOOST: Error %.2f triggers Multiplier %.2fx\n", errorMagnitude, multiplier)
+				}
 			}
+
+			// Clamping (Sicherheitsgrenzen)
 			if currentLambda < min {
 				currentLambda = min
 			}
@@ -127,6 +189,7 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
+		// --- Decay & Migration Logic ---
 		workFound := false
 		if sourceCount > 0 {
 			rows, err := sourcePool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000", sourceTable))
@@ -136,14 +199,16 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 					var uLast float64
 					var lastActivity time.Time
 					rows.Scan(&id, &uLast, &lastActivity, &payload)
+
 					deltaT := time.Since(lastActivity).Hours()
+					// Call Rust
 					uNow := float64(C.calculate_decay(C.double(uLast), C.double(currentLambda), C.double(deltaT)))
 
 					if uNow < threshold {
 						success := migrateRecord(ctx, sourcePool, targetPool, sourceTable, targetTable, id, payload, uNow, lastActivity)
 						if success {
 							workFound = true
-							time.Sleep(1 * time.Millisecond)
+							time.Sleep(1 * time.Millisecond) // CPU Yield
 						}
 					}
 				}
@@ -151,17 +216,26 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
+		// --- Logging with Colors ---
 		if workFound {
 			if sourcePool != targetPool {
-				fmt.Printf("🌉 [%s->%s] Migrated across Storage Zones | λ: %.5f\n", sourceTable, targetTable, currentLambda)
+				// Brücken-Migration (Hot -> Cold)
+				fmt.Printf("🌉 [%s->%s] Migrated across Storage Zones | λ: %.5f\n",
+					colorize(sourceTable), colorize(targetTable), currentLambda)
 			} else {
-				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n", sourceTable, targetTable, float64(targetCount)/math.Max(1, float64(sourceCount)), currentLambda)
+				// Interne Migration
+				ratio := float64(targetCount) / math.Max(1, float64(sourceCount))
+				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
+					colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
 			}
+
+			// Adaptiver Sleep: Wenn Arbeit da ist, arbeite schneller
 			currentSleep /= 2
 			if currentSleep < minSleep {
 				currentSleep = minSleep
 			}
 		} else {
+			// Adaptiver Sleep: Wenn nichts zu tun ist, schlaf länger
 			currentSleep *= 2
 			if currentSleep > maxSleep {
 				currentSleep = maxSleep
@@ -172,6 +246,7 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 }
 
 func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, sourceTable, targetTable, id, payload string, uNow float64, lastActivity time.Time) bool {
+	// Transaction Logic (gleicher Code wie vorher, nur ausgeblendet der Übersicht halber)
 	if sourcePool == targetPool {
 		tx, err := sourcePool.Begin(ctx)
 		if err != nil {
@@ -188,7 +263,8 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 		}
 		return tx.Commit(ctx) == nil
 	} else {
-		time.Sleep(20 * time.Millisecond) // Latency Simulation
+		// Cross-Pool Migration (langsamer)
+		time.Sleep(20 * time.Millisecond)
 		_, err := targetPool.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable), id, payload, uNow, lastActivity)
 		if err != nil {
 			return false
