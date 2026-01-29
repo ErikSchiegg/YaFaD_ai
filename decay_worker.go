@@ -132,7 +132,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 	sourceTable := fmt.Sprintf("table%d", sourceTier)
 	targetTable := fmt.Sprintf("table%d", targetTier)
 
-	// Standard Batch Size
 	baseBatchSize := 1000
 
 	for {
@@ -140,52 +139,64 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 		targetPool := router.GetPool(targetTier)
 
 		var sourceCount, targetCount int
+		// Robuste Abfrage (Fehler ignorieren für Stability)
 		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 		targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", targetTable)).Scan(&targetCount)
 
-		// --- ADAPTIVE CONTROL ---
+		// --- v0.4.0 SYMMETRIC PID LOGIC ---
+		// Integriert Feedback von Reviewer X: "Symmetrize the PID"
+
 		currentBatchSize := baseBatchSize
-		isEmergency := false
+		isEmergency := false   // Panic (Turbo)
+		isHibernating := false // Conservation (Winterschlaf)
 
 		if sourceCount > 0 && targetCount > 0 {
 			currentRatio := float64(targetCount) / float64(sourceCount)
+
+			// Distanz zum Goldenen Schnitt
 			diff := PHI - currentRatio
 
-			// PID Logik
 			if currentRatio > PHI {
-				// Ziel ist voll -> Langsamer machen
-				currentLambda *= 0.95
+				// --- CONSERVATION CIRCUIT (Die Antwort auf "Starvation Syndrome") ---
+				// Szenario: Ziel ist voll, Quelle läuft leer.
+				// Wir nutzen nun auch hier eine nicht-lineare Reaktion.
+
+				// Wenn das Ungleichgewicht groß ist (> 150% von PHI), gehen wir in den "Hard Clamp".
+				if currentRatio > (PHI * 1.5) {
+					// Reviewer X: "Dial it back aggressively enough for underflow"
+					currentLambda = min // Hard Reset auf Minimum
+					isHibernating = true
+				} else {
+					// Sanftes Bremsen (Linear)
+					currentLambda *= 0.90
+				}
+
 			} else {
-				// Ziel ist leer / Quelle ist voll -> GAS GEBEN
-				// Quadratischer Fehler für Lambda
+				// --- TURBO CIRCUIT (Bewährt in v0.3.1) ---
+				// Szenario: Quelle läuft über.
 				errorMagnitude := math.Abs(diff)
-				aggression := math.Pow(errorMagnitude, 2.0)
+				aggression := math.Pow(errorMagnitude, 2.0) // Quadratischer Anstieg
 
 				multiplier := 1.0 + 0.05 + aggression
 				currentLambda *= multiplier
 
-				// --- ADAPTIVE BATCH SIZE ---
-				// Wenn die Hütte brennt (Aggression hoch), nimm eine größere Schaufel!
 				if aggression > 1.0 {
-					// Skaliere BatchSize mit der Panik.
 					extraShovel := int(aggression * 2000)
 					currentBatchSize += extraShovel
-
-					// Deckeln bei vernünftigem Maximum
 					if currentBatchSize > 20000 {
 						currentBatchSize = 20000
 					}
-
 					isEmergency = true
-					// Log nur bei extremen Werten um Spam zu vermeiden
-					if aggression > 3.0 {
-						fmt.Printf("🚜 [%s->%s] MASSIVE LOAD: BatchSize set to %d | Multiplier %.1fx\n",
-							colorize(sourceTable), colorize(targetTable), currentBatchSize, multiplier)
+
+					// Logging für Benchmarks (wie von X gefordert)
+					if aggression > 4.0 {
+						fmt.Printf("🔥 [%s->%s] TURBO FLUSH: Batch %d | λ %.4f | Error +%.2f\n",
+							colorize(sourceTable), colorize(targetTable), currentBatchSize, currentLambda, errorMagnitude)
 					}
 				}
 			}
 
-			// Clamping
+			// Clamping (Sicherheitsgrenzen)
 			if currentLambda < min {
 				currentLambda = min
 			}
@@ -194,11 +205,17 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
-		// --- DECAY LOOP ---
+		// --- DECAY EXECUTION ---
 		workFound := false
+
+		// Im Winterschlaf: Nur minimale "Heartbeat"-Abfragen, um Ressourcen zu sparen
+		effectiveBatchSize := currentBatchSize
+		if isHibernating {
+			effectiveBatchSize = 10
+		}
+
 		if sourceCount > 0 {
-			// Nutze die dynamische BatchSize
-			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT %d", sourceTable, currentBatchSize)
+			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT %d", sourceTable, effectiveBatchSize)
 			rows, err := sourcePool.Query(ctx, query)
 
 			if err == nil {
@@ -209,14 +226,15 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 					rows.Scan(&id, &uLast, &lastActivity, &payload)
 
 					deltaT := time.Since(lastActivity).Hours()
+					// CGO Decay Call
 					uNow := float64(C.calculate_decay(C.double(uLast), C.double(currentLambda), C.double(deltaT)))
 
 					if uNow < threshold {
 						success := migrateRecord(ctx, sourcePool, targetPool, sourceTable, targetTable, id, payload, uNow, lastActivity)
 						if success {
 							workFound = true
-							// KEIN Sleep im Loop bei Notfall
-							if !isEmergency {
+							// Speed-Control: Keine Pause bei Turbo, lange Pause bei Hibernation
+							if !isEmergency && !isHibernating {
 								time.Sleep(10 * time.Microsecond)
 							}
 						}
@@ -226,27 +244,35 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
-		// --- ADAPTIVE SLEEP ---
+		// --- ADAPTIVE SLEEP (Metabolic Rate) ---
 		if workFound {
 			if isEmergency {
-				currentSleep = 1 * time.Millisecond // Herzrasen
+				currentSleep = 1 * time.Millisecond // Adrenalin pur
+			} else if isHibernating {
+				// Reviewer X: "Avoid unnecessary data loss"
+				// Wir schlafen lange, damit Lambda unten bleibt und keine CPU verschwendet wird.
+				currentSleep = 2 * time.Second
 			} else {
-				// Normales Logging (vereinfacht)
+				// Normaler Herzschlag
 				ratio := float64(targetCount) / math.Max(1, float64(sourceCount))
-				// Um den Log sauber zu halten, nur loggen wenn nicht Emergency, oder spezifische Trigger
-				if !isEmergency {
-					fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
-						colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
-				}
+				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
+					colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
+
 				currentSleep /= 2
 				if currentSleep < minSleep {
 					currentSleep = minSleep
 				}
 			}
 		} else {
+			// Leerlauf
 			currentSleep *= 2
 			if currentSleep > maxSleep {
 				currentSleep = maxSleep
+			}
+
+			if isHibernating {
+				fmt.Printf("❄️ [%s->%s] HIBERNATING (Saving Biomass) | λ: %.5f\n",
+					colorize(sourceTable), colorize(targetTable), currentLambda)
 			}
 		}
 
