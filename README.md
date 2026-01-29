@@ -177,7 +177,12 @@ Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an 
 * All active tiers (T0–T3) reached and exceeded their ideal capacity (>100% Fill).
 * **Status:** `🔴 OVERFLOW`.
 * **System Response:** The Decay Engine remained stable. No memory leaks or deadlocks occurred during the saturation phase.
-
+<p align="center">
+  <img src="assets/test031_oversaaturated1.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
+<p align="center">
+  <img src="assets/test031_oversaaturated2.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
 
 
 ### Phase B: Dynamic Simulation (The Metabolism)
@@ -186,7 +191,9 @@ Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an 
 * **Observation:**
 * **Turbo Boost Activation:** Upon detecting the initial overflow (e.g., T2 at >300%), the new PID logic triggered high  values (Decay Rates) and increased batch sizes (up to 20k records).
 * **Rapid Clearing:** The backlog in Tier 2 was processed and migrated downwards within minutes.
-
+<p align="center">
+  <img src="assets/test031_equilibrium.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
 
 
 ### Phase C: Equilibrium & Starvation (Current State)
@@ -196,7 +203,9 @@ Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an 
 * **Tiers T0, T1, T2:** Fill levels dropped significantly below the target  ratio, reaching ~35-50% capacity.
 * **Status:** `🟡 STARVING`.
 * **Tier T4 (Archive):** Continues to grow (>120%), confirming that data is being preserved in deep storage rather than lost.
-
+<p align="center">
+  <img src="assets/test031_starvation.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
 
 
 ## 3. Technical Diagnosis
