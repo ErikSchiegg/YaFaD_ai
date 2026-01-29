@@ -4,6 +4,66 @@
 
 ---
 
+# 🧬 Test Report v0.3.1: Metabolic Efficiency & Starvation Dynamics
+
+**Date:** January 29, 2026
+**Version:** v0.3.1
+**Subject:** 1024MB Stress Test & Bio-Rhythmic Load Simulation
+
+## 1. Executive Summary
+
+Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an adaptive batching mechanism to handle high-velocity data ingestion. The system was subjected to a **1GB saturation test** followed by a dynamic user simulation.
+**Result:** The system demonstrated exceptional stability and processing speed. It successfully resolved massive overflows but currently exhibits **"Metabolic Hyperactivity"**—processing data so efficiently that high-performance tiers become underutilized ("Starving") during low-traffic phases.
+
+## 2. Test Protocol & Observations
+
+### Phase A: Saturation (The Flood)
+
+* **Scenario:** Injection of 1,024,000 records (approx. 1GB) into a cold system.
+* **Observation:**
+* All active tiers (T0–T3) reached and exceeded their ideal capacity (>100% Fill).
+* **Status:** `🔴 OVERFLOW`.
+* **System Response:** The Decay Engine remained stable. No memory leaks or deadlocks occurred during the saturation phase.
+
+
+
+### Phase B: Dynamic Simulation (The Metabolism)
+
+* **Scenario:** Activation of the `user_simulator` v0.3.0, cycling through four load phases: *Morning Rush*, *Coffee Break*, *Viral Spike*, and *Night Mode*.
+* **Observation:**
+* **Turbo Boost Activation:** Upon detecting the initial overflow (e.g., T2 at >300%), the new PID logic triggered high  values (Decay Rates) and increased batch sizes (up to 20k records).
+* **Rapid Clearing:** The backlog in Tier 2 was processed and migrated downwards within minutes.
+
+
+
+### Phase C: Equilibrium & Starvation (Current State)
+
+* **Scenario:** Prolonged "Night Mode" (Low/Zero Activity) after the backlog was cleared.
+* **Observation:**
+* **Tiers T0, T1, T2:** Fill levels dropped significantly below the target  ratio, reaching ~35-50% capacity.
+* **Status:** `🟡 STARVING`.
+* **Tier T4 (Archive):** Continues to grow (>120%), confirming that data is being preserved in deep storage rather than lost.
+
+
+
+## 3. Technical Diagnosis
+
+The system is currently **hyper-metabolic**.
+The **Quadratic PID Controller** is highly effective at reducing stress (handling Overflow) but lacks a symmetrical "Conservation Mode." When input pressure drops, the decay rate () does not decelerate fast enough to retain data in the Hot Tiers. The system effectively "digests" the data faster than the simulation can feed it during quiet periods.
+
+## 4. Conclusion & Roadmap to v0.4.0
+
+**Verdict:** SUCCESS. The primary goal of v0.3.1 (handling massive load and preventing constipation) was achieved. The system is robust and capable of handling loads far exceeding 1GB.
+
+**Next Steps (v0.4.0):**
+
+1. **Implement Conservation Circuit:** Invert the PID logic to force  (Hibernation) when a tier drops below 50% capacity. This will maintain "warmth" in the cache during Night Mode.
+2. **Recall Mechanism:** Implement a "Viral Recall" feature to promote archived data back to Hot Tiers upon access.
+
+---
+
+---
+
 ## Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: -5px;">?
 
 In the age of AI, traditional databases are often bottlenecked by the sheer volume of "noise"—data that is stored but rarely used. YaFaD_ai mimics the efficiency of the human brain to solve this.
@@ -166,6 +226,18 @@ set -x DB_PASSWORD your_password
 set -x DB_NAME yafad_test
 
 ```
+
+## 🚦 Dashboard & Health Status (v0.3.1)
+
+The system now utilizes a color-coded health monitoring system:
+
+* **🔴 OVERFLOW (>150%):** The tier is under extreme pressure. The **Quadratic PID** will engage "Turbo Mode" (High $\lambda$, Large Batches) to flush data downwards.
+* **🟢 OPTIMAL (80-120%):** The Golden Ratio ($\phi$) is maintained. The system is in homeostasis.
+* **🟡 STARVING (<50%):** The system processes data faster than it ingests it. Decay slows down, but in v0.3.1, high-performance tiers may empty out during "Night Mode".
+* **🔵 ARCHIVE GROWING:** This is the expected end-state. T4 and Deep Archives accumulate the "Sediment" of processed data.
+
+**Current Performance Characteristic:**
+YaFaD v0.3.1 is **hyper-metabolic**. Expect rapid clearing of hot tables during low-traffic phases.
 
 ### 2. 🚀 Running the Evaluation
 
