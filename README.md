@@ -180,9 +180,6 @@ Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an 
 <p align="center">
   <img src="assets/test031_oversaaturated1.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
 </p>
-<p align="center">
-  <img src="assets/test031_oversaaturated2.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
-</p>
 
 
 ### Phase B: Dynamic Simulation (The Metabolism)
