@@ -14,7 +14,7 @@ import (
 
 // --- Configuration ---
 const (
-	TotalDuration    = 10 * time.Minute // Wie lange der Test insgesamt läuft
+	TotalDuration    = 30 * time.Minute // Wie lange der Test insgesamt läuft
 	SwitchPhaseEvery = 30 * time.Second // Wie oft sich das Wetter ändert
 )
 
@@ -22,10 +22,10 @@ const (
 type TrafficPhase string
 
 const (
-	PhaseMorningRush TrafficPhase = "☀️ MORNING RUSH (Steady High Load)"
-	PhaseCoffeeBreak TrafficPhase = "☕ COFFEE BREAK (Low Activity)"
-	PhaseViralSpike  TrafficPhase = "🔥 VIRAL SPIKE (Extreme Burst)"
-	PhaseNightMode   TrafficPhase = "🌙 NIGHT MODE (Deep Decay Time)"
+	PhaseMorningRush TrafficPhase = "☀️ (Steady High Load)"
+	PhaseCoffeeBreak TrafficPhase = "☕ (Low Activity)"
+	PhaseViralSpike  TrafficPhase = "🔥 (Extreme Burst)"
+	PhaseNightMode   TrafficPhase = "🌙 (Deep Decay Time)"
 )
 
 func main() {
