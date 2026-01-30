@@ -14,6 +14,10 @@ import (
 	"sync"
 	"time"
 
+	// Stelle sicher, dass dieser Pfad zu deiner go.mod passt!
+	// Wenn in go.mod "module YaFaD_ai" steht, ändere dies zu "YaFaD_ai/internal"
+	"yafad/internal"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -112,11 +116,21 @@ func main() {
 	}()
 
 	// T3 -> T4: DAS SEDIMENT (Langsamer: Max Lambda 0.05)
-	// Dieser Block fehlte, weshalb wg.Wait() ewig gewartet hätte!
 	go func() {
 		defer wg.Done()
 		runHomeostaticWorker(router, 3, 0.005, 0.001, 0.05, 1*time.Second, 10*time.Second)
 	}()
+
+	// --- MONITORING START ---
+	// Hier übergeben wir jetzt den 'hotPool' (*pgxpool.Pool) an den Monitor.
+	// Da internal/monitor.go angepasst wurde, funktioniert das jetzt!
+	go internal.StartMonitor(hotPool, internal.MonitorConfig{
+		Interval:  5 * time.Second,
+		TargetPhi: PHI,
+		CSVFile:   "yafad_metrics.csv",
+	}, func() float64 {
+		return 0.005 // Dummy Lambda für den globalen Monitor
+	})
 
 	wg.Wait()
 }
@@ -139,43 +153,33 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 		targetPool := router.GetPool(targetTier)
 
 		var sourceCount, targetCount int
-		// Robuste Abfrage (Fehler ignorieren für Stability)
+		// Robuste Abfrage
 		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 		targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", targetTable)).Scan(&targetCount)
 
 		// --- v0.4.0 SYMMETRIC PID LOGIC ---
-		// Integriert Feedback von Reviewer X: "Symmetrize the PID"
-
 		currentBatchSize := baseBatchSize
 		isEmergency := false   // Panic (Turbo)
 		isHibernating := false // Conservation (Winterschlaf)
 
 		if sourceCount > 0 && targetCount > 0 {
 			currentRatio := float64(targetCount) / float64(sourceCount)
-
-			// Distanz zum Goldenen Schnitt
 			diff := PHI - currentRatio
 
 			if currentRatio > PHI {
-				// --- CONSERVATION CIRCUIT (Die Antwort auf "Starvation Syndrome") ---
-				// Szenario: Ziel ist voll, Quelle läuft leer.
-				// Wir nutzen nun auch hier eine nicht-lineare Reaktion.
-
-				// Wenn das Ungleichgewicht groß ist (> 150% von PHI), gehen wir in den "Hard Clamp".
+				// --- CONSERVATION CIRCUIT ---
+				// Ziel voll, Quelle leer -> Winterschlaf
 				if currentRatio > (PHI * 1.5) {
-					// Reviewer X: "Dial it back aggressively enough for underflow"
-					currentLambda = min // Hard Reset auf Minimum
+					currentLambda = min
 					isHibernating = true
 				} else {
-					// Sanftes Bremsen (Linear)
 					currentLambda *= 0.90
 				}
-
 			} else {
-				// --- TURBO CIRCUIT (Bewährt in v0.3.1) ---
-				// Szenario: Quelle läuft über.
+				// --- TURBO CIRCUIT ---
+				// Quelle voll -> Turbo
 				errorMagnitude := math.Abs(diff)
-				aggression := math.Pow(errorMagnitude, 2.0) // Quadratischer Anstieg
+				aggression := math.Pow(errorMagnitude, 2.0)
 
 				multiplier := 1.0 + 0.05 + aggression
 				currentLambda *= multiplier
@@ -188,7 +192,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 					}
 					isEmergency = true
 
-					// Logging für Benchmarks (wie von X gefordert)
 					if aggression > 4.0 {
 						fmt.Printf("🔥 [%s->%s] TURBO FLUSH: Batch %d | λ %.4f | Error +%.2f\n",
 							colorize(sourceTable), colorize(targetTable), currentBatchSize, currentLambda, errorMagnitude)
@@ -196,7 +199,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 				}
 			}
 
-			// Clamping (Sicherheitsgrenzen)
 			if currentLambda < min {
 				currentLambda = min
 			}
@@ -207,8 +209,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 
 		// --- DECAY EXECUTION ---
 		workFound := false
-
-		// Im Winterschlaf: Nur minimale "Heartbeat"-Abfragen, um Ressourcen zu sparen
 		effectiveBatchSize := currentBatchSize
 		if isHibernating {
 			effectiveBatchSize = 10
@@ -233,7 +233,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 						success := migrateRecord(ctx, sourcePool, targetPool, sourceTable, targetTable, id, payload, uNow, lastActivity)
 						if success {
 							workFound = true
-							// Speed-Control: Keine Pause bei Turbo, lange Pause bei Hibernation
 							if !isEmergency && !isHibernating {
 								time.Sleep(10 * time.Microsecond)
 							}
@@ -244,16 +243,13 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 			}
 		}
 
-		// --- ADAPTIVE SLEEP (Metabolic Rate) ---
+		// --- ADAPTIVE SLEEP ---
 		if workFound {
 			if isEmergency {
-				currentSleep = 1 * time.Millisecond // Adrenalin pur
+				currentSleep = 1 * time.Millisecond
 			} else if isHibernating {
-				// Reviewer X: "Avoid unnecessary data loss"
-				// Wir schlafen lange, damit Lambda unten bleibt und keine CPU verschwendet wird.
 				currentSleep = 2 * time.Second
 			} else {
-				// Normaler Herzschlag
 				ratio := float64(targetCount) / math.Max(1, float64(sourceCount))
 				fmt.Printf("⚖️ [%s->%s] Ratio: %.2f | λ: %.5f\n",
 					colorize(sourceTable), colorize(targetTable), ratio, currentLambda)
@@ -264,7 +260,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, baseLambda, min,
 				}
 			}
 		} else {
-			// Leerlauf
 			currentSleep *= 2
 			if currentSleep > maxSleep {
 				currentSleep = maxSleep
@@ -299,6 +294,7 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 		return tx.Commit(ctx) == nil
 	} else {
 		// Cross-Pool Migration
+		// Kleiner Sleep für Konsistenz bei Cross-Pool Operationen
 		time.Sleep(20 * time.Millisecond)
 		_, err := targetPool.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable), id, payload, uNow, lastActivity)
 		if err != nil {
