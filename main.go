@@ -9,6 +9,7 @@ import "C"
 import (
 	"database/sql" // Wichtig für sql.DB
 	"log"
+	"sync"
 	"time"
 
 	// Falls dein Modul in go.mod "github.com/DeinName/YaFaD_ai" heißt,
@@ -60,6 +61,35 @@ func main() {
 		Mode:      "DELETE",
 		DumpPath:  "./mnt/tape_archive/fossils/",
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+
+	// Worker Signature: (router, tier, IDEAL_CAPACITY, baseLambda, min, max, minSleep, maxSleep)
+
+	// T0 -> T1: Ideal ~20.000
+	go func() {
+		defer wg.Done()
+		runHomeostaticWorker(router, 0, 20000, 0.01, 0.001, 5.0, 1*time.Millisecond, 100*time.Millisecond)
+	}()
+
+	// T1 -> T2: Ideal ~32.000 (20k * 1.618)
+	go func() {
+		defer wg.Done()
+		runHomeostaticWorker(router, 1, 32000, 0.01, 0.001, 2.0, 10*time.Millisecond, 500*time.Millisecond)
+	}()
+
+	// T2 -> T3: Ideal ~51.000 (32k * 1.618)
+	go func() {
+		defer wg.Done()
+		runHomeostaticWorker(router, 2, 51000, 0.005, 0.001, 1.0, 50*time.Millisecond, 1*time.Second)
+	}()
+
+	// T3 -> T4: Ideal ~82.000
+	go func() {
+		defer wg.Done()
+		runHomeostaticWorker(router, 3, 82000, 0.005, 0.001, 0.05, 1*time.Second, 10*time.Second)
+	}()
 
 	// --- 3. Monitoring Starten (Hintergrund) ---
 
