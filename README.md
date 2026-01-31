@@ -285,5 +285,10 @@ Database: If ```seed_db.go```` fails, run ```TRUNCATE buffer_tier, table0...``` 
 
 ---
 
-❤️ Support the Organism YaFaD_ai is engineered to autonomously slash cloud storage waste. If you find this bio-inspired architecture fascinating, consider supporting its continued evolution.
-<iframe src="https://github.com/sponsors/ErikSchiegg/card" title="Sponsor ErikSchiegg" height="225" width="600" style="border: 0;"></iframe>
+<div align="center">
+  <h3>❤️ Support the Organism</h3>
+  <p>YaFaD_ai is engineered to autonomously slash cloud storage waste. If you find this bio-inspired architecture fascinating, consider supporting its continued evolution.</p>
+  <a href="https://github.com/sponsors/ErikSchiegg">
+    <img src="https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge&logo=github-sponsors" height="45" alt="Sponsor Author" />
+  </a>
+</div>
