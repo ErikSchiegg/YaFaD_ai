@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	// PFAD ANPASSEN FALLS NÖTIG (z.B. "yafad/internal")
 	"yafad/internal"
+	"yafad/internal/cortex" // <--- NEU: Das Gehirn
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,6 +30,7 @@ const (
 	ColorGreen  = "\033[1;32m"
 	ColorCyan   = "\033[1;36m"
 	ColorBlue   = "\033[1;34m"
+	ColorPurple = "\033[1;35m" // Für Cortex Prediction
 )
 
 func colorize(tableName string) string {
@@ -63,7 +64,7 @@ func (r *StorageRouter) GetPool(tier int) *pgxpool.Pool {
 }
 
 func main() {
-	// --- DB Connection Setup ---
+	// --- DB Connection ---
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -72,7 +73,6 @@ func main() {
 	if dbPass == "" {
 		dbPass = "test"
 	}
-
 	hotConnStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
 
 	ctx := context.Background()
@@ -81,7 +81,6 @@ func main() {
 		panic(err)
 	}
 	defer hotPool.Close()
-
 	coldPool, err := pgxpool.New(ctx, hotConnStr)
 	if err != nil {
 		panic(err)
@@ -90,23 +89,32 @@ func main() {
 
 	router := &StorageRouter{HotPool: hotPool, ColdPool: coldPool}
 
-	fmt.Println("📉 YaFaD_ai Federated Decay Engine v0.4.2 (Live Lambda) Active.")
+	// --- CORTEX ACTIVATION (v0.5.0) ---
+	// Das Gehirn wird initialisiert und lädt Erinnerungen aus 'brain_dump.json'
+	brain := cortex.NewCortex("brain_dump.json")
+
+	// Ticker, um das Wissen regelmäßig zu speichern (alle 1 Minute)
+	go func() {
+		saveTicker := time.NewTicker(1 * time.Minute)
+		for range saveTicker.C {
+			brain.Persist()
+		}
+	}()
+
+	fmt.Println("🧠 YaFaD_ai Cortex Online (Predictive Mode).")
 
 	// --- LIVE LAMBDA BRIDGE ---
-	// Eine thread-sichere Variable, um das T0-Lambda an den Monitor zu übergeben
 	var (
 		t0Lambda float64
 		lambdaMu sync.RWMutex
 	)
 
-	// Callback: Worker ruft das auf, um Lambda zu melden
 	reportT0Lambda := func(val float64) {
 		lambdaMu.Lock()
 		t0Lambda = val
 		lambdaMu.Unlock()
 	}
 
-	// Getter: Monitor ruft das auf, um Lambda zu lesen
 	getT0Lambda := func() float64 {
 		lambdaMu.RLock()
 		defer lambdaMu.RUnlock()
@@ -117,34 +125,34 @@ func main() {
 	wg.Add(4)
 
 	// --- WORKER START ---
+	// Wir geben dem Worker jetzt das Brain mit!
 
-	// T0 -> T1 (Der Hochofen - REPORTET SEIN LAMBDA!)
+	// T0 -> T1 (Hochofen + Gehirn)
 	go func() {
 		defer wg.Done()
-		// Wir übergeben 'reportT0Lambda' an den ersten Worker
-		runHomeostaticWorker(router, 0, 28743, 0.01, 0.001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
+		// Der Cortex lernt primär vom T0 Verhalten
+		runHomeostaticWorker(router, brain, 0, 20000, 0.01, 0.001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
 	}()
 
-	// T1 -> T2 (REPORTET NICHTS - nil)
+	// T1 -> T2 (Nur reaktiv)
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 1, 46507, 0.01, 0.001, 2.0, 10*time.Millisecond, 500*time.Millisecond, nil)
+		runHomeostaticWorker(router, nil, 1, 32000, 0.01, 0.001, 2.0, 10*time.Millisecond, 500*time.Millisecond, nil)
 	}()
 
 	// T2 -> T3
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 2, 75250, 0.005, 0.001, 1.0, 50*time.Millisecond, 1*time.Second, nil)
+		runHomeostaticWorker(router, nil, 2, 51000, 0.005, 0.001, 1.0, 50*time.Millisecond, 1*time.Second, nil)
 	}()
 
 	// T3 -> T4
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, 3, 121757, 0.005, 0.001, 0.05, 1*time.Second, 10*time.Second, nil)
+		runHomeostaticWorker(router, nil, 3, 82000, 0.005, 0.001, 0.05, 1*time.Second, 10*time.Second, nil)
 	}()
 
 	// --- MONITORING ---
-	// Nutzt jetzt den echten Getter!
 	go internal.StartMonitor(hotPool, internal.MonitorConfig{
 		Interval:  5 * time.Second,
 		TargetPhi: PHI,
@@ -154,10 +162,9 @@ func main() {
 	wg.Wait()
 }
 
-// --- THE LOGIC CORE ---
+// --- THE LOGIC CORE v0.5.0 ---
 
-// Neue Signatur: reportLambda func(float64) am Ende hinzugefügt
-func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
+func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, startTier int, idealCapacity int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
 	ctx := context.Background()
 	currentLambda := baseLambda
 	threshold := 0.4
@@ -170,6 +177,9 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 
 	baseBatchSize := 1000
 
+	// Timer für Cortex-Updates (nicht bei jedem Loop lernen, alle 10s reicht)
+	lastObservation := time.Now()
+
 	for {
 		sourcePool := router.GetPool(sourceTier)
 		targetPool := router.GetPool(targetTier)
@@ -181,13 +191,15 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 		currentBatchSize := baseBatchSize
 		isEmergency := false
 		isHibernating := false
+		isPredictiveBoost := false // Neu: Flag für KI-Eingriff
 
-		// --- PID & PRESSURE LOGIC ---
 		if sourceCount > 0 && targetCount > 0 {
+			// 1. PID Basic Logic
 			currentRatio := float64(targetCount) / float64(sourceCount)
 			diff := PHI - currentRatio
 			pressure := float64(sourceCount) / float64(idealCapacity)
 
+			// --- REACTIVE LAYER (Reptile Brain) ---
 			if currentRatio > (PHI*1.5) && pressure < 0.8 {
 				currentLambda = min
 				isHibernating = true
@@ -199,7 +211,7 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 					aggression := math.Pow(errorMagnitude, 2.0)
 					currentLambda *= (1.0 + 0.05 + aggression)
 				}
-
+				// Pressure Valve
 				if pressure > 1.1 {
 					pressureBoost := baseLambda * pressure * 0.5
 					if pressureBoost > currentLambda {
@@ -215,6 +227,30 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 				}
 			}
 
+			// --- PREDICTIVE LAYER (Cortex) --- v0.5.0
+			// Nur wenn wir ein Brain haben (T0 Worker) und nicht schlafen
+			if brain != nil && !isHibernating && !isEmergency {
+
+				// A. LERNEN: Was ist jetzt gerade los?
+				if time.Since(lastObservation) > 10*time.Second {
+					brain.Observe(currentLambda)
+					lastObservation = time.Now()
+				}
+
+				// B. VORHERSAGEN: Was kommt in der nächsten Stunde?
+				// Wir schauen 1 Stunde in die Zukunft
+				predictedStress := brain.Predict(1)
+
+				// Wenn die Vorhersage sagt: "Gleich wird es stressig" (Lambda war historisch hoch)
+				// Und wir sind aktuell entspannt...
+				if predictedStress > currentLambda*1.5 {
+					// ...dann fahren wir das System jetzt schon hoch (Pre-Warming)
+					currentLambda = (currentLambda + predictedStress) / 2 // Mittelwert
+					isPredictiveBoost = true
+				}
+			}
+
+			// Clamping
 			if currentLambda < min {
 				currentLambda = min
 			}
@@ -223,8 +259,6 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 			}
 		}
 
-		// --- LIVE REPORTING ---
-		// Wenn eine Callback-Funktion übergeben wurde (nur T0), melden wir den neuen Wert
 		if reportLambda != nil {
 			reportLambda(currentLambda)
 		}
@@ -271,8 +305,14 @@ func runHomeostaticWorker(router *StorageRouter, startTier int, idealCapacity in
 				ratio := float64(targetCount) / math.Max(1, float64(sourceCount))
 				press := float64(sourceCount) / float64(idealCapacity)
 
-				fmt.Printf("⚖️ [%s->%s] Rat: %.2f | Press: %.1fx | λ: %.5f\n",
-					colorize(sourceTable), colorize(targetTable), ratio, press, currentLambda)
+				// Visualisierung des KI-Eingriffs
+				lambdaStr := fmt.Sprintf("%.5f", currentLambda)
+				if isPredictiveBoost {
+					lambdaStr = ColorPurple + lambdaStr + " (AI)" + ColorReset
+				}
+
+				fmt.Printf("⚖️ [%s->%s] Rat: %.2f | Press: %.1fx | λ: %s\n",
+					colorize(sourceTable), colorize(targetTable), ratio, press, lambdaStr)
 
 				currentSleep /= 2
 				if currentSleep < minSleep {
@@ -301,7 +341,6 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 			return false
 		}
 		defer tx.Rollback(ctx)
-
 		_, err = tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), id)
 		if err != nil {
 			return false

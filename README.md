@@ -4,7 +4,7 @@
 
 ---
 
-[See our latest gigabyte stress test results and conclusions 📉](#test031) 
+### 📉 [Latest Benchmark: v0.3.1 Stress Test & Starvation Analysis](#test031)
 
 ---
 
@@ -23,15 +23,12 @@ In the age of AI, traditional databases are often bottlenecked by the sheer volu
 ## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts
 
 ### 1. The Utility Index (The Pheromone Principle)
-
 Just as ants mark paths, YaFaD assigns a **Utility Index** to every record.
-
 * **Reinforcement:** Frequently accessed data gains "scent," moving into high-speed tiers.
 * **Relevance:** Automatically prioritizes data critical to current business operations.
 
 ### 2. Golden Ratio Cascading
-
-We utilize the **Golden Ratio $\Phi$** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
+We utilize the **Golden Ratio ($\Phi$)** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
 
 ---
 
@@ -75,6 +72,7 @@ $$Error = \frac{Count(T_{target})}{Count(T_{source})} - 1.618$$
 > **Result:** A self-healing infrastructure that autonomously scales its internal "pressure" to handle sudden traffic spikes or long periods of inactivity without manual intervention.
 
 ---
+
 ## 🌌 The Fractal Archive: Recursive Scaling
 
 <p align="center">
@@ -93,6 +91,7 @@ Instead of letting the "Cold Tier" (Table 4) become a monolithic bottleneck, YaF
 > **Business Impact:** This architecture allows YaFaD_ai to maintain **sub-millisecond latency** on the hot tier, even while managing **Petabytes of historical data** in the background. It creates an infrastructure that is functionally infinite yet operationally lean.
 
 ---
+
 ## 🌌 Black Hole Mechanism: Entropy & The Event Horizon
 
 > *"Ignorance (of trivial things) is bliss"*
@@ -106,20 +105,13 @@ To maintain operational plasticity, **YaFaD_ai** mimics biological synaptic prun
 ### The Mathematical Decay
 Records decay exponentially over time ($\Delta t$). Once a record's utility falls below the critical **Event Horizon** ($\epsilon$), it is identified as metabolic waste.
 
-$$
-U_{new} = U_{current} \cdot e^{-\lambda \Delta t} \quad \xrightarrow{\text{check}} \quad \text{if } U_{new} < \epsilon \implies \text{VAPORIZE}
-$$
-
+$$U_{new} = U_{current} \cdot e^{-\lambda \Delta t} \quad \xrightarrow{\text{check}} \quad \text{if } U_{new} < \epsilon \implies \text{VAPORIZE}$$
 
 ### Estimated Lifespan ($T_{TTL}$): System Peristalsis
 
-Unlike static retention policies (e.g., "delete after 30 days"), YaFaD_ai's retention is **homeostatic**. The system regulates the lifespan of inactive records based on its current stress level.
+Unlike static retention policies (e.g., "delete after 30 days"), YaFaD_ai's retention is **homeostatic**. The system regulates the lifespan of inactive records based on its current stress level. Think of $\lambda$ as the **rate of peristalsis** (digestive movement).
 
-Think of $\lambda$ as the **rate of peristalsis** (digestive movement) in the system's tract. The controller adjusts this rate to ensure the system processes data just as fast as it ingests it.
-
-$$
-T_{TTL} \approx \frac{9.21}{\lambda} \quad \text{(Inverse relationship)}
-$$
+$$T_{TTL} \approx \frac{9.21}{\lambda} \quad \text{(Inverse relationship)}$$
 
 | System Load | $\lambda$ (Peristalsis) | Data Lifespan | Biological Analogy |
 | :--- | :--- | :--- | :--- |
@@ -129,171 +121,60 @@ $$
 ### The Event Horizon ($\epsilon$)
 Once the utility of a record slips below the critical **Horizon Threshold** ($\epsilon$), it is no longer considered biologically viable. The system triggers a phase transition:
 
-$$
-Action = \begin{cases} \text{Keep} & \text{if } U_{new} > \epsilon \\ \text{Vaporize} & \text{if } U_{new} \le \epsilon \end{cases}
-$$
-
-* **Vaporize:** The record is permanently expunged from the active index. It creates a vacuum that keeps the system lean and performant.
-* **Sedimentation (Optional):** In configured "Archive" modes, vaporized data is not destroyed but "Cast in Amber"—compressed into deep cold storage (sediment) where it requires zero operational energy to maintain.
-
-> **Operational Impact:** This mechanism ensures the database remains $O(1)$ efficient regardless of total lifespan, as the "active" population of records stabilizes naturally according to the usage pressure.
----
-
-## 🛠 Project Status & Roadmap
-
-| Component | Status | Tech Stack |
-| :--- | :--- | :--- |
-| **High-Performance Core** | ✅ Stable | Rust |
-| **Orchestration Layer** | 🚧 In Progress | Go |
-| **Utility-Driven Cache** | ✅ Functional | AI Logic |
-| **Decay Engine (Gravity)** | ✅ Functional | Rust/Go |
-| **Distributed Sync** | 📅 Roadmap | Cloud-Native |
+* **Vaporize:** The record is permanently expunged from the active index.
+* **Sedimentation (Optional):** In configured "Archive" modes, vaporized data is "Cast in Amber"—compressed into deep cold storage.
 
 ---
 
-❤️ Drive the future of cost-efficient infrastructure. YaFaD_ai is engineered to autonomously slash cloud storage waste and reduce operational overhead. Support the project to accelerate the development of features that directly optimize your Total Cost of Ownership (TCO). If you find the bio-inspired architecture of YaFaD_ai fascinating, consider supporting the continued evolution of this digital organism.
+## <a name="test031"></a> 🧬 Test Report v0.3.1: Metabolic Efficiency
 
-<a href="https://github.com/sponsors/ErikSchiegg"> <img src="https://img.shields.io/badge/Sponsor-ErikSchiegg-pink?style=for-the-badge%26logo=github-sponsors" alt="Sponsor Button" /> </a>
+**Date:** January 29, 2026 | **Subject:** 1024MB Stress Test & Bio-Rhythmic Load Simulation
 
----
+### 1. Executive Summary
+Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an adaptive batching mechanism. The system was subjected to a **1GB saturation test** followed by a dynamic user simulation.
+**Result:** The system demonstrated exceptional stability. It successfully resolved massive overflows but currently exhibits **"Metabolic Hyperactivity"**—processing data so efficiently that high-performance tiers become underutilized ("Starving") during low-traffic phases.
 
-## <a name="test031"></a> 🧬 Test Report v0.3.1: Metabolic Efficiency & Starvation Dynamics
+### 2. Test Observations
 
-**Date:** January 29, 2026
-**Version:** v0.3.1
-**Subject:** 1024MB Stress Test & Bio-Rhythmic Load Simulation
+**Phase A: Saturation (The Flood)**
+* **Scenario:** Injection of 1,024,000 records (approx. 1GB).
+* **Observation:** All active tiers exceeded ideal capacity (>100% Fill).
+* **Status:** `🔴 OVERFLOW`. No memory leaks or deadlocks occurred.
+<p align="center"><img src="assets/test031_oversaaturated1.png" alt="Saturation" width="80%"></p>
 
-## 1. Executive Summary
+**Phase B: Dynamic Simulation (The Metabolism)**
+* **Scenario:** `user_simulator` cycled through *Morning Rush*, *Viral Spike*, and *Night Mode*.
+* **Observation:** The PID logic triggered high $\lambda$ values and increased batch sizes (up to 20k records). The backlog was cleared within minutes.
+<p align="center"><img src="assets/test031_equilibrium.png" alt="Equilibrium" width="80%"></p>
 
-Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an adaptive batching mechanism to handle high-velocity data ingestion. The system was subjected to a **1GB saturation test** followed by a dynamic user simulation.
-**Result:** The system demonstrated exceptional stability and processing speed. It successfully resolved massive overflows but currently exhibits **"Metabolic Hyperactivity"**—processing data so efficiently that high-performance tiers become underutilized ("Starving") during low-traffic phases.
-
-## 2. Test Protocol & Observations
-
-### Phase A: Saturation (The Flood)
-
-* **Scenario:** Injection of 1,024,000 records (approx. 1GB) into a cold system.
-* **Observation:**
-* All active tiers (T0–T3) reached and exceeded their ideal capacity (>100% Fill).
-* **Status:** `🔴 OVERFLOW`.
-* **System Response:** The Decay Engine remained stable. No memory leaks or deadlocks occurred during the saturation phase.
-<p align="center">
-  <img src="assets/test031_oversaaturated1.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
-</p>
-
-
-### Phase B: Dynamic Simulation (The Metabolism)
-
-* **Scenario:** Activation of the `user_simulator` v0.3.0, cycling through four load phases: *Morning Rush*, *Coffee Break*, *Viral Spike*, and *Night Mode*.
-* **Observation:**
-* **Turbo Boost Activation:** Upon detecting the initial overflow (e.g., T2 at >300%), the new PID logic triggered high  values (Decay Rates) and increased batch sizes (up to 20k records).
-* **Rapid Clearing:** The backlog in Tier 2 was processed and migrated downwards within minutes.
-<p align="center">
-  <img src="assets/test031_equilibrium.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
-</p>
-
-
-### Phase C: Equilibrium & Starvation (Current State)
-
-* **Scenario:** Prolonged "Night Mode" (Low/Zero Activity) after the backlog was cleared.
-* **Observation:**
-* **Tiers T0, T1, T2:** Fill levels dropped significantly below the target  ratio, reaching ~35-50% capacity.
+**Phase C: Equilibrium & Starvation (Current State)**
+* **Scenario:** Prolonged "Night Mode" (Low Activity).
+* **Observation:** Fill levels dropped significantly below the target $\Phi$ ratio (~35-50% capacity).
 * **Status:** `🟡 STARVING`.
-* **Tier T4 (Archive):** Continues to grow (>120%), confirming that data is being preserved in deep storage rather than lost.
-<p align="center">
-  <img src="assets/test031_starvation.png" alt="YaFaD_ai Black Hole Mechanism" width="100%">
-</p>
+* **Note:** Tier 4 (Archive) continues to grow (>120%), confirming data preservation.
+<p align="center"><img src="assets/test031_starvation.png" alt="Starvation" width="80%"></p>
 
-
-## 3. Technical Diagnosis
-
-The system is currently **hyper-metabolic**.
-The **Quadratic PID Controller** is highly effective at reducing stress (handling Overflow) but lacks a symmetrical "Conservation Mode." When input pressure drops, the decay rate () does not decelerate fast enough to retain data in the Hot Tiers. The system effectively "digests" the data faster than the simulation can feed it during quiet periods.
-
-## 4. Conclusion & Roadmap to v0.4.0
-
-**Verdict:** SUCCESS. The primary goal of v0.3.1 (handling massive load and preventing constipation) was achieved. The system is robust and capable of handling loads far exceeding 1GB.
-
+### 3. Conclusion & Roadmap to v0.4.0
+**Verdict:** SUCCESS. The system handles loads far exceeding 1GB.
 **Next Steps (v0.4.0):**
-
-1. **Implement Conservation Circuit:** Invert the PID logic to force  (Hibernation) when a tier drops below 50% capacity. This will maintain "warmth" in the cache during Night Mode.
-2. **Recall Mechanism:** Implement a "Viral Recall" feature to promote archived data back to Hot Tiers upon access.
-
----
-
-## 🧪 Evaluation & Benchmarking
-
-YaFaD_ai includes a comprehensive test suite to evaluate the **Synaptic Buffer** and **Golden Ratio Cascading** logic (Development Roadmap).
-
-### 1. Prerequisites
-
-Set your environment variables for PostgreSQL communication:
-
-```bash
-set -x DB_USER your_user
-set -x DB_PASSWORD your_password
-set -x DB_NAME yafad_test
-
-```
-
-## 🚦 Dashboard & Health Status (v0.3.1)
-
-The system now utilizes a color-coded health monitoring system:
-
-* **🔴 OVERFLOW (>150%):** The tier is under extreme pressure. The **Quadratic PID** will engage "Turbo Mode" (High $\lambda$, Large Batches) to flush data downwards.
-* **🟢 OPTIMAL (80-120%):** The Golden Ratio ($\phi$) is maintained. The system is in homeostasis.
-* **🟡 STARVING (<50%):** The system processes data faster than it ingests it. Decay slows down, but in v0.3.1, high-performance tiers may empty out during "Night Mode".
-* **🔵 ARCHIVE GROWING:** This is the expected end-state. T4 and Deep Archives accumulate the "Sediment" of processed data.
-
-**Current Performance Characteristic:**
-YaFaD v0.3.1 is **hyper-metabolic**. Expect rapid clearing of hot tables during low-traffic phases.
-
-### 2. 🚀 Running the Evaluation
-
-Navigate to the project folder and open **four** terminal windows:
-
-1. **Terminal 1 (Monitor):** Start the core engine and dashboard.
-```bash
-go run setup_db.go
-
-```
+1.  **Conservation Circuit:** Invert the PID logic to force $\lambda$ reduction (Hibernation) when a tier drops below 50% capacity.
+2.  **Recall Mechanism:** Implement "Viral Recall" to promote archived data back to Hot Tiers upon access.
+<blockquote>
+  <strong>YaFaD v0.4.0 is out!</strong> 🚀<br>
+  We taught the database to sleep at night and predict the morning rush.<br>
+  ✅ <strong>Symmetric PID:</strong> No more empty tables at night.<br>
+  🧠 <strong>Cortex AI:</strong> Pre-warming based on historical usage.<br>
+  📊 <strong>Telemetry:</strong> Real-time CSV metrics.<br>
+  🛡️ <strong>Tested:</strong> Rock-solid at 5.5GB stress load.<br>
+  <br>
+  <em>Making the internet organic.</em> 🌱 #Golang #PostgreSQL #GreenIT
+</blockquote>
 
 
-2. **Terminal 2 (Seeding):** Create the evaluation data mass (e.g., 90MB).
-```bash
-go run seed_db.go
+## 🏗 System Architecture
 
-```
-
-
-3. **Terminal 3 (Gravity):** Start the biological decay worker to trigger the Golden Ratio cascade.
-```bash
-go run decay_worker.go
-
-```
-
-
-4. **Terminal 4 (Traffic):** Emulate user behavior and data reinforcement.
-```bash
-go run user_simulator.go
-
-```
-
-
-5.  **Terminal 5 (Fractal Engine):** Activate the recursive deep-storage system.
-```bash
-go run fractal_decay.go
-```
-*Note: This worker acts as the "Pressure Valve." It monitors `table4` for overflows (>50k records) and autonomously manages the infinite archive cascade (`archive0` → `archive4`).*
-
-<p align="center"><img src="assets/test_suite.png" alt="YaFaD_ai Test Suite" width="100%"></p>
-
----
-# YaFaD_ai System Architecture
-
-## 1. System Overview (Component Diagram)
-
-This diagram illustrates the hybrid architecture. Go manages I/O load and database connections, while the Rust Core module acts as the 'brain' for mathematical decay calculations, integrated via a high-performance CGO interface.
+### 1. System Overview (Component Diagram)
+Go manages I/O load and database connections, while the Rust Core module acts as the 'brain' for mathematical decay calculations, integrated via a high-performance CGO interface.
 
 ```mermaid
 graph TD
@@ -322,124 +203,87 @@ graph TD
         DB_COLD -->|Fractal Dump| ARC[Archive 0..4]
     end
 
-    %% Repariert: Nur Indices 0 bis 7 (da es genau 8 Pfeile gibt)
     linkStyle 0,1,2,3,4,5,6,7 stroke-width:2px,fill:none,stroke:black;
 ```
 
-## 2. Data Lifecycle (Sequence Diagram)
-
-The record lifecycle demonstrates a strict separation of concerns: The Go worker retrieves data, passes raw numerical values to Rust for computation, and executes database operations based on the results. This ensures the Go Garbage Collector remains unburdened by heavy math.
-
 ```mermaid
-sequenceDiagram
-    participant DB as Postgres (Table T)
-    participant GO as Go Worker
-    participant RUST as Rust Core (FFI)
-    participant NEXT as Next Tier (T+1)
+    stateDiagram-v2
+        direction LR
 
-    %% High Contrast Blue Zone (Go / IO)
-    rect rgba(10, 41, 60, 1)
-    note right of GO: Zone 1: Go handles I/O
-    loop Every N Seconds
-        GO->>DB: SELECT id, last_activity, utility FROM T
-        DB-->>GO: Record (u_last, time_delta)
+        state "Hot Storage (Mem/SSD)" as Hot {
+            [*] --> Table0
+            Table0 --> Table1: Fast Decay
+            Table1 --> Table2: Medium Decay
+        }
+
+        state "Cold Gateway" as Gateway {
+            Table2 --> Table3: Archive Buffer
+            Table3 --> Table4: The Monster
+            note right of Table4
+                Limit: 50k Records
+                "Pressure Valve"
+            end note
+        }
+
+        state "Fractal Archive (HDD/Tape)" as Fractal {
+            Table4 --> Archive0: Overflow
+            Archive0 --> Archive1: λ * 0.1
+            Archive1 --> Archive2: λ * 0.01
+            Archive2 --> Archive3: λ * 0.001
+            Archive3 --> Archive4: Deep Freeze
+        }
+
+        style Hot fill:#b3e5fc,stroke:#0288d1,color:black
+        style Gateway fill:#ffe0b2,stroke:#f57c00,color:black
+        style Fractal fill:#e0e0e0,stroke:#616161,color:black
+
+        style Table0 fill:white,stroke:#0288d1,color:black
+        style Table1 fill:white,stroke:#0288d1,color:black
+        style Table2 fill:white,stroke:#0288d1,color:black
         
-        %% High Contrast Yellow Zone (Rust / Math)
-        rect rgba(107, 97, 10, 1)
-        note right of RUST: Zone 2: Rust does Math (No GC)
-        GO->>RUST: calculate_decay(u_last, lambda, delta_t)
-        RUST-->>GO: return u_current
-        end
+        style Table3 fill:white,stroke:#f57c00,color:black
+        style Table4 fill:white,stroke:#f57c00,color:black
         
-        alt u_current < Threshold
-            GO->>NEXT: INSERT Record (Migration)
-            GO->>DB: DELETE Record
-        else u_current >= Threshold
-            GO->>DB: UPDATE utility = u_current
-        end
-    end
-    end
-```
-
-## 3. The Fractal Conveyor Belt (State Diagram)
-
-The core of v0.2.0: Data flows from Hot Tiers (Memory/SSD) into the 'Cold Gateway'. Upon overflow (>50k records), data is offloaded into the fractal archive (HDD/Tape), where time (Lambda λ) is dilated by a factor of 10.
-
-```mermaid
-stateDiagram-v2
-    direction LR
-
-    state "Hot Storage (Mem/SSD)" as Hot {
-        [*] --> Table0
-        Table0 --> Table1: Fast Decay
-        Table1 --> Table2: Medium Decay
-    }
-
-    state "Cold Gateway" as Gateway {
-        Table2 --> Table3: Archive Buffer
-        Table3 --> Table4: The Monster
-        note right of Table4
-            Limit: 50k Records
-            "Pressure Valve"
-        end note
-    }
-
-    state "Fractal Archive (HDD/Tape)" as Fractal {
-        Table4 --> Archive0: Overflow
-        Archive0 --> Archive1: λ * 0.1
-        Archive1 --> Archive2: λ * 0.01
-        Archive2 --> Archive3: λ * 0.001
-        Archive3 --> Archive4: Deep Freeze
-    }
-
-    %% --- STYLING (Muss zwingend ausserhalb der Klammern stehen!) ---
-    
-    %% Gruppen-Farben
-    style Hot fill:#b3e5fc,stroke:#0288d1,color:black
-    style Gateway fill:#ffe0b2,stroke:#f57c00,color:black
-    style Fractal fill:#e0e0e0,stroke:#616161,color:black
-
-    %% Tabellen-Farben (Weiß mit Rand)
-    style Table0 fill:white,stroke:#0288d1,color:black
-    style Table1 fill:white,stroke:#0288d1,color:black
-    style Table2 fill:white,stroke:#0288d1,color:black
-    
-    style Table3 fill:white,stroke:#f57c00,color:black
-    style Table4 fill:white,stroke:#f57c00,color:black
-    
-    style Archive0 fill:white,stroke:#616161,color:black
-    style Archive1 fill:white,stroke:#616161,color:black
-    style Archive2 fill:white,stroke:#616161,color:black
-    style Archive3 fill:white,stroke:#616161,color:black
-    style Archive4 fill:white,stroke:#616161,color:black
+        style Archive0 fill:white,stroke:#616161,color:black
+        style Archive1 fill:white,stroke:#616161,color:black
+        style Archive2 fill:white,stroke:#616161,color:black
+        style Archive3 fill:white,stroke:#616161,color:black
+        style Archive4 fill:white,stroke:#616161,color:black
 ```
 ---
+## 🚦 Usage & Evaluation
 
-## 🛠 Troubleshooting & CGO Setup
+YaFaD_ai includes a comprehensive test suite to evaluate the Synaptic Buffer and Golden Ratio Cascading.
 
-Building a Go/Rust hybrid requires tight coordination. Here are solutions to common hurdles:
+### 1. Prerequisites:
 
-### 1. The Rust-Go Bridge (Linking)
+```bash
+set -x DB_USER your_user
+set -x DB_PASSWORD your_password
+set -x DB_NAME yafad_test
+```
+### 2. Run the Suite (4 Terminals):
 
-If you see `undefined reference to 'calculate_decay'`:
+Terminal 1 (Setup): ```go run setup_db.go``` (Reset DB)
 
-* **No Mangle:** Ensure `core/src/lib.rs` uses `#[no_mangle]` and `pub extern "C"`.
-* **Library Type:** `core/Cargo.toml` must have `crate-type = ["cdylib", "staticlib"]`.
-* **Force Rebuild:** Run `cd core && cargo clean && cargo build --release`.
+Terminal 2 (Seeding): ```go run seed_db.go``` (Inject Mass)
 
-### 2. Shared Library Path
+Terminal 3 (Gravity): ```go run decay_worker.go``` (Start Core Engine)
 
-If the program fails at startup (`cannot open shared object file`):
+Terminal 4 (Traffic): ```go run user_simulator.go``` (Simulate Usage)
 
-* **RPATH:** We use `-Wl,-rpath` in Go `LDFLAGS` to bake the path into the binary.
-* **Manual Override:** `LD_LIBRARY_PATH=./core/target/release go run decay_worker.go`.
-
-### 3. Database Integrity
-
-* **Unique Constraints:** If `seed_db.go` fails, run:
-`TRUNCATE buffer_tier, table0, table1, table2, table3, table4;`
-* **CGO Cache:** If linking still fails after a fix, run `go clean -cache`.
+Terminal 5 (Fractal): ```go run fractal_decay.go``` (Deep Storage)
 
 ---
 
+## 🛠 Troubleshooting CGO
+Rust Linking: If you see ```undefined reference```, ensure ```core/src/lib.rs``` uses ```#[no_mangle]``` and ```extern "C"```.
 
+Shared Object: If the program fails at startup, try: ```LD_LIBRARY_PATH=./core/target/release go run decay_worker.go```.
+
+Database: If ```seed_db.go```` fails, run ```TRUNCATE buffer_tier, table0...``` in Postgres.
+
+---
+
+❤️ Support the Organism YaFaD_ai is engineered to autonomously slash cloud storage waste. If you find this bio-inspired architecture fascinating, consider supporting its continued evolution.
+<iframe src="https://github.com/sponsors/ErikSchiegg/card" title="Sponsor ErikSchiegg" height="225" width="600" style="border: 0;"></iframe>
