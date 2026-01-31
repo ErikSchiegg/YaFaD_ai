@@ -12,20 +12,12 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// --- Configuration ---
+// --- CONFIGURATION ---
 const (
-	TotalDuration    = 30 * time.Minute // Wie lange der Test insgesamt läuft
-	SwitchPhaseEvery = 30 * time.Second // Wie oft sich das Wetter ändert
-)
-
-// TrafficPhase definiert die Stimmung des Users
-type TrafficPhase string
-
-const (
-	PhaseMorningRush TrafficPhase = "☀️ (Steady High Load)"
-	PhaseCoffeeBreak TrafficPhase = "☕ (Low Activity)"
-	PhaseViralSpike  TrafficPhase = "🔥 (Extreme Burst)"
-	PhaseNightMode   TrafficPhase = "🌙 (Deep Decay Time)"
+	// Simulations-Geschwindigkeit:
+	// 5 echte Sekunden = 1 virtuelle Stunde.
+	// Ein voller "Tag" dauert also 24 * 5 = 120 Sekunden (2 Minuten).
+	RealSecondsPerHour = 5 * time.Second
 )
 
 func main() {
@@ -48,121 +40,172 @@ func main() {
 
 	// 2. Setup
 	rand.Seed(time.Now().UnixNano())
-	log.Println("🤖 Bio-Rhythm User Simulator v0.3.0 starting...")
-	log.Printf("⏱️  Duration: %v | Phase Switch: %v\n", TotalDuration, SwitchPhaseEvery)
+	log.Println("🤖 Bio-Rhythm User Simulator v0.5.0 (Cyclic Pattern) starting...")
+	log.Printf("⏱️  Time Scale: 1 Virtual Hour = %v Real Time", RealSecondsPerHour)
 
-	// 3. The Loop
-	startTime := time.Now()
-	phaseTicker := time.NewTicker(SwitchPhaseEvery)
-	defer phaseTicker.Stop()
+	// 3. The Daily Cycle Loop
+	virtualHour := 6 // Wir starten morgens um 06:00
+	hourTicker := time.NewTicker(RealSecondsPerHour)
+	defer hourTicker.Stop()
 
-	// HIER WAR DER FEHLER: Nutze jetzt konsistent PhaseMorningRush
-	currentPhase := PhaseMorningRush
+	log.Printf("\n🌅 GOOD MORNING! Virtual Time: %02d:00", virtualHour)
 
-	// Statistik
-	requests := 0
-
-	for time.Since(startTime) < TotalDuration {
+	for {
 		select {
-		case <-phaseTicker.C:
-			// Wähle eine neue Phase zufällig
-			r := rand.Intn(4)
-			switch r {
-			case 0:
-				currentPhase = PhaseMorningRush // Korrigiert
-			case 1:
-				currentPhase = PhaseCoffeeBreak
-			case 2:
-				currentPhase = PhaseViralSpike
-			case 3:
-				currentPhase = PhaseNightMode
+		case <-hourTicker.C:
+			// Eine Stunde ist vergangen
+			virtualHour = (virtualHour + 1) % 24
+
+			// Visueller Separator für den neuen Tag/Stunde
+			icon := getHourIcon(virtualHour)
+			log.Printf("\n%s Virtual Time: %02d:00 | Load: %s", icon, virtualHour, getLoadDescription(virtualHour))
+
+			if virtualHour == 0 {
+				log.Println("✨ A NEW DAY BEGINS...")
 			}
-			log.Printf("\n🔁 PHASE SWITCH: %s\n", currentPhase)
 
 		default:
-			// Führe Aktionen basierend auf der Phase aus
-			performUserAction(db, currentPhase)
-			requests++
-
-			// Visuelles Feedback alle 1000 Requests
-			if requests%1000 == 0 {
-				fmt.Print(".")
-			}
+			// Arbeite basierend auf der aktuellen virtuellen Stunde
+			performHourlyAction(db, virtualHour)
 		}
 	}
-
-	log.Println("\n✅ Simulation complete.")
 }
 
-func performUserAction(db *sql.DB, phase TrafficPhase) {
+// getHourIcon gibt ein passendes Emoji für die Tageszeit zurück
+func getHourIcon(hour int) string {
+	switch {
+	case hour >= 0 && hour < 6:
+		return "🌙"
+	case hour >= 6 && hour < 9:
+		return "🌅"
+	case hour >= 9 && hour < 18:
+		return "💼" // Working
+	case hour >= 18 && hour < 23:
+		return "🔥" // Prime Time
+	default:
+		return "🛌"
+	}
+}
+
+func getLoadDescription(hour int) string {
+	if hour >= 0 && hour < 6 {
+		return "Deep Sleep (Low)"
+	}
+	if hour >= 6 && hour < 9 {
+		return "Ramp Up (Medium)"
+	}
+	if hour >= 9 && hour < 18 {
+		return "Business Steady (High)"
+	}
+	if hour >= 18 && hour < 23 {
+		return "Viral Spike (Extreme)"
+	}
+	return "Cool Down"
+}
+
+// performHourlyAction generiert Traffic basierend auf der Uhrzeit
+func performHourlyAction(db *sql.DB, hour int) {
 	ctx := context.Background()
 
-	// 1. Wie lange schlafen wir zwischen Aktionen? (Die Frequenz)
-	var sleepDuration time.Duration
+	var baseSleepMs int
+	var variance int
 	var batchSize int
 
-	switch phase {
-	case PhaseMorningRush: // Korrigiert
-		// Stetiger Fluss: 5ms - 20ms Pause
-		sleepDuration = time.Duration(rand.Intn(15)+5) * time.Millisecond
-		batchSize = 1 // Einzelne User
+	// --- DER TAGESRHYTHMUS ---
+	switch {
+	case hour >= 0 && hour < 6:
+		// NACHT: Fast nichts los. Ideal für Hibernation Tests.
+		baseSleepMs = 1500
+		variance = 1000 // 1.5s - 2.5s Pause
+		batchSize = 0   // Oft gar keine neuen Daten, nur Background Noise
 
-	case PhaseCoffeeBreak:
-		// Faul: 200ms - 1s Pause
-		sleepDuration = time.Duration(rand.Intn(800)+200) * time.Millisecond
+	case hour >= 6 && hour < 9:
+		// MORGEN: Langsames Aufwachen.
+		baseSleepMs = 100
+		variance = 100
 		batchSize = 1
 
-	case PhaseViralSpike:
-		// Panik: 0ms Pause (So schnell es geht), aber manchmal kurze Atempausen
-		if rand.Float32() < 0.9 {
-			sleepDuration = 0
-		} else {
-			sleepDuration = 10 * time.Millisecond
-		}
-		batchSize = 10 // Bulk Inserts simulieren
+	case hour >= 9 && hour < 18:
+		// ARBEITSTAG: Hohe, gleichmäßige Last.
+		// Hier sollte die KI stabilisieren.
+		baseSleepMs = 10
+		variance = 20 // 10ms - 30ms Pause
+		batchSize = 2
 
-	case PhaseNightMode:
-		// Fast tot: 1s - 3s Pause
-		sleepDuration = time.Duration(rand.Intn(2000)+1000) * time.Millisecond
-		batchSize = 0 // Manchmal gar nichts tun
+	case hour >= 18 && hour < 23:
+		// ABEND / PRIME TIME: Streaming/Gaming Spitzen.
+		// Hier ist der größte Stress für die DB.
+		baseSleepMs = 2
+		variance = 10  // 2ms - 12ms Pause (sehr schnell)
+		batchSize = 15 // Bulk Inserts!
+
+	default: // 23:00 - 00:00
+		baseSleepMs = 500
+		variance = 200
+		batchSize = 1
 	}
 
-	time.Sleep(sleepDuration)
+	// Berechne reale Pause mit Varianz ("Jitter")
+	actualSleep := time.Duration(baseSleepMs+rand.Intn(variance+1)) * time.Millisecond
+	time.Sleep(actualSleep)
 
-	if batchSize == 0 {
+	// Manchmal (in der Nacht) machen wir gar nichts
+	if batchSize == 0 && rand.Float32() > 0.1 {
 		return
 	}
+	if batchSize == 0 {
+		batchSize = 1
+	} // Mindestens ein Ping
 
-	// 2. Was tun wir? (Insert vs. Update/Read)
-	actionRoll := rand.Float32()
+	// Zufällige Entscheidung: Schreiben oder Lesen?
+	// Abends wird mehr konsumiert (gelesen), tagsüber mehr gearbeitet (geschrieben)
+	writeProbability := 0.3
+	if hour >= 18 {
+		writeProbability = 0.1
+	} // Abends mehr Reads (Netflix-Effekt)
 
-	if actionRoll < 0.3 {
-		// 30% Chance: NEUE DATEN (Ingest)
+	if rand.Float64() < writeProbability {
 		createRecords(ctx, db, batchSize)
 	} else {
-		// 70% Chance: ALTE DATEN LESEN (Viral Hit / Refresh)
-		simulateViralHit(ctx, db)
+		simulateAccess(ctx, db)
 	}
 }
 
 func createRecords(ctx context.Context, db *sql.DB, count int) {
 	for i := 0; i < count; i++ {
+		// ID generieren
 		id := fmt.Sprintf("rec_%d_%d", time.Now().UnixNano(), rand.Intn(100000))
+
+		// Insert in Table0 (Hot Tier)
 		_, err := db.ExecContext(ctx,
 			"INSERT INTO table0 (id, payload, utility_index, last_activity) VALUES ($1, 'user_data', 1.0, NOW()) ON CONFLICT DO NOTHING",
 			id)
 		if err != nil {
-			// Fehler ignorieren
+			// Ignore constraint errors during stress test
 		}
+	}
+	// Kleiner Indikator im Terminal (Schreibmaschine)
+	if count > 5 {
+		fmt.Print("#")
+	} else {
+		fmt.Print(".")
 	}
 }
 
-func simulateViralHit(ctx context.Context, db *sql.DB) {
-	tier := rand.Intn(3) + 1
+func simulateAccess(ctx context.Context, db *sql.DB) {
+	// Wir greifen zufällig auf Daten zu, meistens in den oberen Tiers
+	tier := 0
+	r := rand.Float32()
+	if r > 0.6 {
+		tier = 1
+	}
+	if r > 0.85 {
+		tier = 2
+	} // Selten auf Cold Data zugreifen
+
 	tableName := fmt.Sprintf("table%d", tier)
 
-	// Refresh eines zufälligen Records (erhöht Lebensdauer)
+	// "Viral Hit": Wir lesen einen Record und setzen seinen Utility Index wieder auf 1.0 (Verjüngung)
 	query := fmt.Sprintf("UPDATE %s SET utility_index = 1.0, last_activity = NOW() WHERE id IN (SELECT id FROM %s LIMIT 1)", tableName, tableName)
-
 	db.ExecContext(ctx, query)
 }
