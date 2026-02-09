@@ -1,92 +1,110 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
-	"strconv"
 	"strings"
-	"time" // Required for Time-Warp logic
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// getEnv retrieves environment variables or returns a fallback value.
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
+const (
+	TotalRecords = 2000000
+	BatchSize    = 2000
+
+	T2IdealCapacity = 51000
+	HighWaterMark   = T2IdealCapacity * 2.0
+	LowWaterMark    = T2IdealCapacity * 1.1
+)
 
 func main() {
-	// 1. User Interaction: Ask for evaluation database size
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("📊 Enter desired evaluation database size in MB [Default 50]: ")
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-
-	mbSize := 50 // Default value
-	if input != "" {
-		if val, err := strconv.Atoi(input); err == nil {
-			mbSize = val
-		}
+	dbUser := os.Getenv("DB_USER")
+	if dbUser == "" {
+		dbUser = "eriks"
 	}
-
-	// Calculation: 1 MB is approx. 1000 records (assuming ~1KB per record payload)
-	totalRecords := mbSize * 1000
-	fmt.Printf("🏗️  Seeding roughly %d MB (~%d records) with 48h Time-Warp...\n", mbSize, totalRecords)
-
-	// 2. Database Connection setup
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable",
-		getEnv("DB_USER", "eriks"), getEnv("DB_PASSWORD", "test"),
-		getEnv("DB_HOST", "localhost"), getEnv("DB_NAME", "yafad_test"))
+	dbPass := os.Getenv("DB_PASSWORD")
+	if dbPass == "" {
+		dbPass = "test"
+	}
+	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
 
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, connStr)
+	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
-		fmt.Printf("❌ Connection failed: %v\n", err)
-		return
+		log.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	defer pool.Close()
 
-	// 3. Maintenance: Optional data cleanup for a clean evaluation run
-	fmt.Print("🧹 Clear existing data before seeding? [y/N]: ")
-	cleanInput, _ := reader.ReadString('\n')
-	if strings.ToLower(strings.TrimSpace(cleanInput)) == "y" {
-		fmt.Println("♻️  Truncating all tiers...")
-		conn.Exec(ctx, "TRUNCATE buffer_tier, table0, table1, table2, table3, table4;")
-	}
+	log.Println("🌱 YaFaD Smart Seeder v0.4.2 (JSON Fixed) starting...")
+	log.Printf("🎯 Goal: %d Records | T2 Limit: >%d (Slow) / <%d (Fast)", TotalRecords, int(HighWaterMark), int(LowWaterMark))
 
-	// 4. Seeding Process: Injecting aged data to trigger immediate decay evaluation
-	for i := 0; i < totalRecords; i++ {
-		tier := rand.Intn(5)
-		tableName := fmt.Sprintf("table%d", tier)
-		id := fmt.Sprintf("rec_%08d", i)
+	isThrottled := false
+	insertedTotal := 0
 
-		// Create a realistic payload (padded to ~1KB for volume simulation)
-		payload := fmt.Sprintf(`{"data": "%s", "metadata": "ai_block_%d", "vector": %v}`,
-			strings.Repeat("x", 800), i, rand.Float64())
-		utility := rand.Float64()
+	for insertedTotal < TotalRecords {
 
-		// TIME-WARP: Set 'last_activity' 24 to 48 hours into the past
-		hoursAgo := 24 + rand.Intn(24)
-		pastTime := time.Now().Add(time.Duration(-hoursAgo) * time.Hour)
+		// --- BACKPRESSURE CHECK ---
+		if insertedTotal%(BatchSize*5) == 0 {
+			var t2Count int
+			err := pool.QueryRow(ctx, "SELECT count(*) FROM table2").Scan(&t2Count)
+			if err == nil {
+				pressure := float64(t2Count) / float64(T2IdealCapacity) * 100.0
 
-		query := fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4)", tableName)
-		_, err = conn.Exec(ctx, query, id, payload, utility, pastTime)
+				if !isThrottled && t2Count > int(HighWaterMark) {
+					isThrottled = true
+					log.Printf("🛑 OVERFLOW DETECTED (T2: %.0f%%). Throttling injection...", pressure)
+				} else if isThrottled && t2Count < int(LowWaterMark) {
+					isThrottled = false
+					log.Printf("🟢 PRESSURE RELEASED (T2: %.0f%%). Resuming full speed.", pressure)
+				}
+			}
+		}
+
+		if isThrottled {
+			time.Sleep(500 * time.Millisecond)
+			fmt.Print("zzz ")
+		}
+
+		// --- INSERTION ---
+		batch := make([][]interface{}, 0, BatchSize)
+		for i := 0; i < BatchSize; i++ {
+			id := fmt.Sprintf("seed_%d_%d", time.Now().UnixNano(), rand.Intn(999999))
+
+			// --- KORREKTUR: Valides JSON Format ---
+			// Statt nur "xxxxx" bauen wir jetzt ein JSON Objekt: {"data": "xxxxx"}
+			rawContent := strings.Repeat("x", 50)
+			payload := fmt.Sprintf(`{"content": "%s", "timestamp": "%v"}`, rawContent, time.Now().Unix())
+
+			batch = append(batch, []interface{}{id, payload, 1.0, time.Now()})
+		}
+
+		_, err = pool.CopyFrom(
+			ctx,
+			pgx.Identifier{"table0"},
+			[]string{"id", "payload", "utility_index", "last_activity"},
+			pgx.CopyFromRows(batch),
+		)
 
 		if err != nil {
-			fmt.Printf("❌ Error at record %d: %v\n", i, err)
-			return
+			// Wir loggen den Fehler, brechen aber nicht ab (falls mal ein einzelner Batch fehlschlägt)
+			log.Printf("❌ Insert Error: %v", err)
+			time.Sleep(1 * time.Second) // Kurze Pause bei Fehler
+		} else {
+			insertedTotal += BatchSize
+			if !isThrottled {
+				fmt.Print(".")
+			}
 		}
 
-		if i%5000 == 0 && i > 0 {
-			fmt.Printf("📡 Progress: %d/%d records injected...\n", i, totalRecords)
+		if insertedTotal%(BatchSize*20) == 0 {
+			fmt.Printf(" %d\n", insertedTotal)
 		}
 	}
 
-	fmt.Printf("✅ Success! %d MB seeded across all tiers. Data is 'aged' and ready for the Decay Worker.\n", mbSize)
+	log.Println("\n✅ Seeding complete.")
 }
