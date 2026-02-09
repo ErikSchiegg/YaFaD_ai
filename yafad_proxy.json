@@ -1,0 +1,16 @@
+{
+  "listen_port": "6543",
+  "target_host": "localhost:5432",
+  "bio_filter": {
+    "managed_tables": [
+      "table0",
+      "table1",
+      "table2",
+      "table3",
+      "table4",
+      "user_content_posts",
+      "temp_analytics"
+    ],
+    "id_pattern": "rec_\\d+_\\d+"
+  }
+}

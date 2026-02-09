@@ -4,7 +4,21 @@
 
 ---
 
-### 📉 [Latest Release v0.4.0 is out, README is incurrently under reconstuction]
+### 📉 Release v0.4.1: "The Belly Awareness Update" 🤰
+
+**Date:** February 9, 2026 | **Focus:** Homeostasis, PID Control & Anti-Starvation
+
+**1. Executive Summary**
+Release v0.4.0 transforms YaFaD from a reactive script into a truly **homeostatic organism**. We introduced a **PID Controller (Proportional-Integral-Derivative)** and a **"Belly Awareness"** mechanism. The system now "feels" the pressure of the entire digestive tract (Tiers 0-4) and regulates the flow to prevent both overflows and empty stomachs.
+
+**2. Key Innovations**
+* **PID Controller 2nd Order:** Replaces simple logic with smooth adjustments based on error (P), history (I), and future trends (D).
+* **Belly Awareness (Feed-Forward):** The Hot Tier (T0) monitors the "Belly" (T2). If the belly is full (>95%), T0 autonomously brakes intake to prevent indigestion.
+* **Result:** Perfect Stasis. In a 200k record run, the system held exactly 200,000 records with $\Phi_{diff} \approx 0.01$ and $\lambda \approx 0.001$.
+
+<p align="center">
+  <img src="assets/equilibrium_ckeck.png" alt="YaFaD Equilibrium Graph" width="100%">
+</p>
 
 ---
 
@@ -45,6 +59,124 @@ $$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
 * **$\lambda$ (Decay Constant):** The "Administrator Factor"—tunable to your specific business requirements.
 * **$\Delta t$:** The time elapsed since the last data access.
 
+## 🛡️ The SQL Passthrough Proxy: Transparent Integration
+
+> *"Don't rewrite your application. Just change the port."*
+
+Integrating a decay engine into an existing application (e.g., WordPress, Django, Node.js) usually requires massive code refactoring to manually send "keep-alive" signals for every data access. **YaFaD_ai** solves this with a zero-code **SQL Passthrough Proxy**.
+
+### How it Works: The "Sniffer"
+The proxy sits between your application and the PostgreSQL database. It acts as a transparent wire, forwarding 99% of traffic (authentication, results, errors) instantly with near-zero latency.
+
+However, it "sniffs" `SELECT` queries for organic IDs. When your application reads a record from a managed table, the proxy asynchronously injects a **"Pheromone Signal"** into the core engine.
+
+* **Effect:** The accessed record's **Utility Index** is immediately reset to **1.0 (100%)**.
+* **Result:** Frequently read data automatically fights off decay and remains in the high-speed Hot Tier.
+
+### 🧬 The Bio-Filter: Why Whitelisting?
+
+A biological system must distinguish between **Living Tissue** (Content) and **Bone Structure** (Infrastructure). If YaFaD treated *every* table as organic, it might eventually decide that your `admin_users` or `migrations` table is "stale" and attempt to metabolize it. **This would be catastrophic.**
+
+To prevent auto-digestion of critical system data, the Proxy implements a strict **Bio-Filter (Whitelist)** via `yafad_proxy.json`.
+
+* **Inorganic (Ignored):** Tables like `users`, `permissions`, `logs`, and `settings` are invisible to the decay engine. They remain static and permanent.
+* **Organic (Managed):** Only content tables defined in the whitelist (e.g., `user_posts`, `comments`, `sensor_data`) are monitored for pheromones and subject to decay.
+
+**Configuration Example (`yafad_proxy.json`):**
+
+```json
+{
+  "listen_port": "6543",         // App connects here
+  "target_host": "localhost:5432", // Real DB
+  "bio_filter": {
+    "managed_tables": [
+      "table0", "table1", "table2", // Hot Tiers
+      "user_uploads",               // Specific App Content
+      "temp_analytics"
+    ],
+    "id_pattern": "rec_\\d+_\\d+"   // Regex to identify Organic IDs
+  }
+}
+```
+
+---
+
+## Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: -5px;">?
+
+In the age of AI, traditional databases are often bottlenecked by the sheer volume of "noise"—data that is stored but rarely used. YaFaD_ai mimics the efficiency of the human brain to solve this.
+
+### Strategic Value
+
+* **Cost-Efficient Scaling:** Actively "forgets" trivial data to reduce hardware overhead and cloud costs.
+* **Hybrid Powerhouse:** Combines **Go’s** rapid orchestration with **Rust’s** uncompromising memory safety and speed.
+* **Predictive Performance:** Uses a "Pheromone Principle" to anticipate data needs, ensuring sub-millisecond latency.
+
+---
+
+## <img src="assets/logo_brain.png" alt="YaFaD_ai Brain" height="28"> Core Concepts
+
+### 1. The Utility Index (The Pheromone Principle)
+Just as ants mark paths, YaFaD assigns a **Utility Index** to every record.
+* **Reinforcement:** Frequently accessed data gains "scent," moving into high-speed tiers.
+* **Relevance:** Automatically prioritizes data critical to current business operations.
+
+### 2. Golden Ratio Cascading
+We utilize the **Golden Ratio ($\Phi$)** and Fibonacci structures to manage sub-tables. This allows the system to scale organically, keeping data density and access speed in perfect equilibrium.
+
+---
+
+## <img src="assets/logo_stats.png" alt="YaFaD_ai Logic" height="28"> The Logic of "Forgetfulness" (Decay)
+
+A system is only as fast as its ability to shed dead weight. YaFaD_ai maintains peak performance by applying a mathematical decay function to data relevance. If a record isn't reinforced by activity, its importance fades—mimicking biological memory.
+
+### The Utility Formula
+
+$$U_{now} = U_{last} \cdot e^{-\lambda \cdot \Delta t}$$
+
+**Parameters:**
+* **$U$ (Utility Index):** The current importance score of the data record.
+* **$\lambda$ (Decay Constant):** The "Administrator Factor"—tunable to your specific business requirements.
+* **$\Delta t$:** The time elapsed since the last data access.
+
+## 🛡️ The SQL Passthrough Proxy: Transparent Integration
+
+> *"Don't rewrite your application. Just change the port."*
+
+Integrating a decay engine into an existing application (e.g., WordPress, Django, Node.js) usually requires massive code refactoring to manually send "keep-alive" signals for every data access. **YaFaD_ai** solves this with a zero-code **SQL Passthrough Proxy**.
+
+### How it Works: The "Sniffer"
+The proxy sits between your application and the PostgreSQL database. It acts as a transparent wire, forwarding 99% of traffic (authentication, results, errors) instantly with near-zero latency.
+
+However, it "sniffs" `SELECT` queries for organic IDs. When your application reads a record from a managed table, the proxy asynchronously injects a **"Pheromone Signal"** into the core engine.
+
+* **Effect:** The accessed record's **Utility Index** is immediately reset to **1.0 (100%)**.
+* **Result:** Frequently read data automatically fights off decay and remains in the high-speed Hot Tier.
+
+### 🧬 The Bio-Filter: Why Whitelisting?
+
+A biological system must distinguish between **Living Tissue** (Content) and **Bone Structure** (Infrastructure). If YaFaD treated *every* table as organic, it might eventually decide that your `admin_users` or `migrations` table is "stale" and attempt to metabolize it. **This would be catastrophic.**
+
+To prevent auto-digestion of critical system data, the Proxy implements a strict **Bio-Filter (Whitelist)** via `yafad_proxy.json`.
+
+* **Inorganic (Ignored):** Tables like `users`, `permissions`, `logs`, and `settings` are invisible to the decay engine. They remain static and permanent.
+* **Organic (Managed):** Only content tables defined in the whitelist (e.g., `user_posts`, `comments`, `sensor_data`) are monitored for pheromones and subject to decay.
+
+**Configuration Example (`yafad_proxy.json`):**
+
+```json
+{
+  "listen_port": "6543",         // App connects here
+  "target_host": "localhost:5432", // Real DB
+  "bio_filter": {
+    "managed_tables": [
+      "table0", "table1", "table2", // Hot Tiers
+      "user_uploads",               // Specific App Content
+      "temp_analytics"
+    ],
+    "id_pattern": "rec_\\d+_\\d+"   // Regex to identify Organic IDs
+  }
+}
+```
 ---
 
 ## 🧬 Feature: The Homeostatic Regulator (PID Control)
@@ -264,11 +396,11 @@ set -x DB_NAME yafad_test
 ```
 ### 2. Run the Suite (4 Terminals):
 
-Terminal 1 (Setup): ```go run setup_db.go``` (Reset DB)
+Terminal 1 (Setup): ```go run setup_db.go``` (First time: preparing DB)
 
-Terminal 2 (Seeding): ```go run seed_db.go``` (Inject Mass)
+Terminal 2 (Seeding): ```go run main.go``` (Start Core Engine, inject Mass)
 
-Terminal 3 (Gravity): ```go run decay_worker.go``` (Start Core Engine)
+Terminal 3 (Gravity): ```go run dashboard.go``` (Start Monitoring)
 
 Terminal 4 (Traffic): ```go run user_simulator.go``` (Simulate Usage)
 
