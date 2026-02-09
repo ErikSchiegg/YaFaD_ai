@@ -9,7 +9,7 @@
 **Date:** February 9, 2026 | **Focus:** Homeostasis, PID Control & Anti-Starvation
 
 **1. Executive Summary**
-Release v0.4.0 transforms YaFaD from a reactive script into a truly **homeostatic organism**. We introduced a **PID Controller (Proportional-Integral-Derivative)** and a **"Belly Awareness"** mechanism. The system now "feels" the pressure of the entire digestive tract (Tiers 0-4) and regulates the flow to prevent both overflows and empty stomachs.
+Release v0.4.1 transforms YaFaD from a reactive script into a truly **homeostatic organism**. We introduced a **PID Controller (Proportional-Integral-Derivative)** and a **"Belly Awareness"** mechanism. The system now "feels" the pressure of the entire digestive tract (Tiers 0-4) and regulates the flow to prevent both overflows and empty stomachs.
 
 **2. Key Innovations**
 * **PID Controller 2nd Order:** Replaces simple logic with smooth adjustments based on error (P), history (I), and future trends (D).
