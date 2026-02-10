@@ -1,7 +1,12 @@
 {
-  "table0": 25000,
-  "table1": 40450,
-  "table2": 65449,
-  "table3": 105898,
-  "table4": 171346
+  "capacities": {
+    "table0": 294009,
+    "table1": 475716,
+    "table2": 769724,
+    "table3": 1245439,
+    "table4": 2015162
+  },
+  "target_ratio": 1,
+  "sniffer_active": true,
+  "last_updated": "2026-02-10T23:55:57.766253986+01:00"
 }

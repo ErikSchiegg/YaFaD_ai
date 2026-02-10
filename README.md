@@ -4,23 +4,18 @@
 
 ---
 
-### 📉 Release v0.4.2: "The Buoyancy Update" 🎈
+## 🚀 What's New in v0.8.0: "The Time Traveler & The Oracle"
 
-**Date:** February 10, 2026 | **Focus:** Anti-Starvation & Smart Pacing
+We’ve reached a massive milestone! YaFaD has evolved from a reactive script into a fully autonomous, predictive, and self-managing biological organism. Stress-tested with millions of records, v0.8.0 introduces true intelligence and dynamic scaling.
 
-**1. The Problem: "Panic Flushing"**
-Previous versions were too aggressive. When T0 (Hot Tier) exceeded capacity, the system would panic and flush everything, causing the tier to drop to 0 records. This "Empty Stomach" syndrome hurt read performance.
+### 🔥 Epic New Features
 
-**2. The Solution: Buoyancy Logic**
-We implemented a **Minimum Buoyancy Guard**.
-* **Anti-Starvation:** If a tier drops below **90% capacity**, the Cortex forces the decay rate ($\lambda$) to near-zero (Hibernation Mode).
-* **Effect:** Data is "floated" in the hot tier until fresh data arrives, ensuring T0 is always prime for high-speed reads.
+* 🧠 **Pre-Cognition Engine (ML Cortex):** YaFaD is no longer just reactive—it's clairvoyant. The Rust-backed Cortex now uses a trained Linear Regression model ($R^2 = 0.96$) to predict T0 pressure spikes **30 seconds into the future**. If a data tsunami is detected, the brain proactively boosts `Lambda` before the bottleneck even occurs. 
+* 📐 **Autonomous Golden Geometry:** Say goodbye to manual tuning! The new Setup Wizard uses the "Archimedes Constant" to auto-calculate the perfect capacity for all tiers (T0-T4). Give it an expected data volume, and YaFaD builds a mathematically perfect pyramid with a built-in 1.2x safety headroom. T0 always runs at a relaxed ~100%.
+* 🔭 **Production Auto-Scout:** In Production mode, YaFaD acts as a scout. It connects to your source database, scans the actual table size (e.g., `user_posts`), and dynamically shape-shifts its own architecture to perfectly digest that specific table.
+* 🎬 **Scenario Mode & Accelerated Aging:** Testing the "Deep Archive" is now a breeze. The generator features a new `-mode scenario` flag that simulates natural data lifecycles: **Act 1 (The Flood)** injects data, followed by **Act 2 (The Lull)** where the system rests. Combined with a new, hot-reloadable `VanishThreshold` (e.g., `10m`), you can watch YaFaD flush cold data into the Deep Archive at warp speed.
 
-**3. Smart Bio-Generator**
-The load simulator now features a **Pacemaker**. Instead of blindly flooding the database, it monitors T0's internal pressure and adjusts injection speed dynamically (Inverted Exponential Curve).
-* **Result:** A smooth, organic data flow that maximizes throughput without triggering emergency dumps.
-
-> **Verdict:** *"YaFaD now breathes. It holds data when hungry and exhales when full."*
+**The Result:** A rock-solid, homeostatic database engine that breathes in data waves, digests them smoothly through its tiers, and permanently archives the cold "biomass"—all without breaking a sweat or needing manual intervention.
 
 <p align="center">
   <img src="assets/equilibrium_ckeck.png" alt="YaFaD Equilibrium Graph" width="100%">
