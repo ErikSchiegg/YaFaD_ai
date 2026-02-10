@@ -31,7 +31,7 @@ const PHI = 1.61803398875
 // --- PID Controller ---
 type PIDController struct {
 	Kp, Ki, Kd float64
-	SetPoint   float64 // Ziel-Füllstand (z.B. 0.85 für 85%)
+	SetPoint   float64 // Ziel-Füllstand (1.0 = 100%)
 	Integral   float64
 	PrevError  float64
 	LastTime   time.Time
@@ -55,20 +55,19 @@ func (pid *PIDController) Update(currentVal float64) float64 {
 	}
 	pid.LastTime = now
 
-	// Fehler: Positiv wenn zu voll (wir müssen schneller decayen)
-	// Negativ wenn zu leer (wir müssen bremsen)
+	// Fehler: Positiv wenn zu voll, Negativ wenn zu leer
 	error := currentVal - pid.SetPoint
 
-	// Integral (mit Anti-Windup Limitierung)
+	// Integral (mit Anti-Windup)
 	pid.Integral += error * dt
-	if pid.Integral > 10 {
-		pid.Integral = 10
+	if pid.Integral > 5 {
+		pid.Integral = 5
 	}
-	if pid.Integral < -10 {
-		pid.Integral = -10
+	if pid.Integral < -5 {
+		pid.Integral = -5
 	}
 
-	// Derivative (Dämpfung)
+	// Derivative
 	derivative := (error - pid.PrevError) / dt
 	pid.PrevError = error
 
@@ -103,7 +102,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	slog.Info("YaFaD Monitor starting", "version", "0.3.0-belly-aware", "log_path", logPath)
+	slog.Info("YaFaD Monitor starting", "version", "0.4.3-tuning", "log_path", logPath)
 
 	// 1. Connection
 	dbUser := os.Getenv("DB_USER")
@@ -146,7 +145,7 @@ func main() {
 			brain.Persist()
 		}
 	}()
-	fmt.Println("🧠 YaFaD_ai Cortex Online (PID Controlled).")
+	fmt.Println("🧠 YaFaD_ai Cortex Online.")
 
 	// 4. LAMBDA BRIDGE
 	var (
@@ -169,39 +168,40 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(5)
 
-	// 5. WORKER START (Mit optimierten PID-Werten)
-	// T0: Aggressiveres P, aber starkes D für Dämpfung. Ziel: 85% Auslastung.
+	// 5. WORKER START (Tuned Buoyancy)
+
+	// T0: Ziel 100%. Starvation Guard ab 90% (weniger aggressiv).
 	go func() {
 		defer wg.Done()
-		// KP=2.0, KI=0.1, KD=0.5 | Target=0.85
-		pid := NewPID(2.0, 0.1, 0.5, 0.85)
-		runHomeostaticWorker(router, brain, pid, 0, caps["table0"], 0.01, 0.0001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
+		pid := NewPID(1.5, 0.05, 0.2, 1.0)
+		runHomeostaticWorker(router, brain, pid, 0, caps["table0"], 0.005, 0.0001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
 	}()
 
-	// T1: Sanfter. Ziel: 80% Auslastung.
+	// T1: Ziel 100%.
 	go func() {
 		defer wg.Done()
-		pid := NewPID(1.0, 0.05, 0.2, 0.80)
-		runHomeostaticWorker(router, nil, pid, 1, caps["table1"], 0.01, 0.0001, 2.0, 10*time.Millisecond, 500*time.Millisecond, nil)
+		pid := NewPID(1.2, 0.05, 0.2, 1.0)
+		runHomeostaticWorker(router, nil, pid, 1, caps["table1"], 0.005, 0.0001, 3.0, 10*time.Millisecond, 500*time.Millisecond, nil)
 	}()
 
-	// T2 (Belly): Sehr stabil. Ziel: 70%.
+	// T2 (Belly): Ziel 90%.
 	go func() {
 		defer wg.Done()
-		pid := NewPID(0.5, 0.01, 0.1, 0.70)
+		pid := NewPID(0.8, 0.01, 0.1, 0.90)
 		runHomeostaticWorker(router, nil, pid, 2, caps["table2"], 0.005, 0.0001, 1.0, 50*time.Millisecond, 1*time.Second, nil)
 	}()
 
-	// T3 & T4 (Standard Logic, less aggressive decay)
+	// T3: Ziel 80%.
 	go func() {
 		defer wg.Done()
-		pid := NewPID(0.5, 0.01, 0.1, 0.60)
+		pid := NewPID(0.5, 0.01, 0.1, 0.80)
 		runHomeostaticWorker(router, nil, pid, 3, caps["table3"], 0.005, 0.0001, 0.5, 1*time.Second, 10*time.Second, nil)
 	}()
+
+	// T4: Ziel 50%.
 	go func() {
 		defer wg.Done()
 		pid := NewPID(0.2, 0.0, 0.0, 0.50)
-		// Sehr niedrige Decay Rate für T4, damit man was sieht
 		runHomeostaticWorker(router, nil, pid, 4, caps["table4"], 0.001, 0.0001, 0.1, 1*time.Second, 30*time.Second, nil)
 	}()
 
@@ -241,9 +241,10 @@ func main() {
 func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, int) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║ 🔧 YaFaD ENGINE SETUP (v0.3.0 PID)               ║")
+	fmt.Println("║ 🔧 YaFaD ENGINE SETUP (v0.4.3 Tuned)             ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 
+	// Truncate
 	fmt.Print("❓ Flush internal tables (Start fresh)? [y/N]: ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
@@ -259,20 +260,31 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 		fmt.Println("⏩ Keeping existing data.")
 	}
 
+	// Capacity (MIT BUGFIX für Kommas/Punkte)
 	baseCap := 20000
 	fmt.Printf("❓ Enter BASE CAPACITY (T0 Size) [default %d]: ", baseCap)
 	inputCap, _ := reader.ReadString('\n')
 	inputCap = strings.TrimSpace(inputCap)
+	// CLEANUP: Entferne Tausendertrennzeichen
+	inputCap = strings.ReplaceAll(inputCap, ".", "")
+	inputCap = strings.ReplaceAll(inputCap, ",", "")
+
 	if inputCap != "" {
 		if val, err := strconv.Atoi(inputCap); err == nil && val > 0 {
 			baseCap = val
+		} else {
+			fmt.Printf("⚠️  Invalid number '%s', using default %d\n", inputCap, baseCap)
 		}
 	}
 
+	// Injection
 	injectAmount := 0
 	fmt.Print("🌊 Inject Simulation Data? (Enter amount or 0 for None) [default 0]: ")
 	inputInj, _ := reader.ReadString('\n')
 	inputInj = strings.TrimSpace(inputInj)
+	inputInj = strings.ReplaceAll(inputInj, ".", "")
+	inputInj = strings.ReplaceAll(inputInj, ",", "")
+
 	if inputInj != "" {
 		if val, err := strconv.Atoi(inputInj); err == nil && val > 0 {
 			injectAmount = val
@@ -298,7 +310,7 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	return caps, injectAmount
 }
 
-// --- WORKER LOGIC (NEW PID & BELLY AWARE) ---
+// --- WORKER LOGIC ---
 
 func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDController, startTier int, idealCapacity int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
 	ctx := context.Background()
@@ -315,12 +327,11 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 		targetTable = "deep_archive"
 	}
 
-	// Für Belly Awareness: Das übernächste Tier
 	bellyTier := targetTier + 1
 	bellyTable := fmt.Sprintf("table%d", bellyTier)
 	if targetTier >= 4 {
 		bellyTable = ""
-	} // Kein Belly Check für T3/T4
+	}
 
 	baseBatchSize := 1000
 	lastObservation := time.Now()
@@ -333,19 +344,16 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 		targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", targetTable)).Scan(&targetCount)
 
-		// Belly Awareness Check (Nur für T0 und T1 relevant)
+		// Belly Awareness Check
 		bellyFactor := 1.0
 		if bellyTable != "" {
 			var bellyCount int
-			// Wir ignorieren Fehler, falls Tabelle nicht existiert (z.B. Archiv)
 			if router.GetPool(bellyTier).QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", bellyTable)).Scan(&bellyCount) == nil {
-				// Zielkapazität des Bauchs schätzen (Phi^2 * SourceCap)
 				bellyCap := float64(idealCapacity) * PHI * PHI
 				if bellyCap > 0 {
 					bellyRatio := float64(bellyCount) / bellyCap
-					// Wenn der Bauch voll ist (>95%), bremsen wir ab!
-					if bellyRatio > 0.95 {
-						bellyFactor = 0.5 // Bremse auf 50%
+					if bellyRatio > 1.05 {
+						bellyFactor = 0.5
 					}
 				}
 			}
@@ -355,21 +363,19 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 		isEmergency := false
 		isPredictiveBoost := false
 
-		// --- PID REGELUNG ---
+		// --- PID & BUOYANCY ---
 		pressure := float64(sourceCount) / float64(idealCapacity)
 
-		// PID Output berechnen (-X bis +X)
-		pidOutput := pid.Update(pressure)
+		// TUNING: Starvation Guard reduziert auf 90% (weniger aggressiver Auftrieb)
+		if startTier <= 1 && pressure < 0.89 {
+			currentLambda = min // Winterschlaf
+		} else {
+			pidOutput := pid.Update(pressure)
+			currentLambda = baseLambda + pidOutput
+		}
 
-		// Lambda anpassen: Base + PID Output
-		// Wenn PID positiv (zu voll) -> Lambda hoch
-		// Wenn PID negativ (zu leer) -> Lambda runter
-		currentLambda = baseLambda + pidOutput
-
-		// Belly Bremse anwenden
 		currentLambda *= bellyFactor
 
-		// Cortex Integration (Feed Forward)
 		if brain != nil && !isEmergency {
 			if time.Since(lastObservation) > 10*time.Second {
 				brain.Observe(currentLambda)
@@ -382,7 +388,6 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 			}
 		}
 
-		// Clamping
 		if currentLambda < min {
 			currentLambda = min
 		}
@@ -390,10 +395,10 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 			currentLambda = max
 		}
 
-		// EMERGENCY DUMP (PID Ignorieren wenn es brennt)
-		if pressure > 2.5 {
+		// EMERGENCY DUMP (> 200%)
+		if pressure > 3.0 {
 			isEmergency = true
-			evacSize := 50000
+			evacSize := 40000
 			slog.Warn("EMERGENCY DUMP", "source", sourceTable, "pressure", pressure, "size", evacSize)
 			err := emergencyEvacuate(ctx, sourcePool, targetPool, sourceTable, targetTable, evacSize)
 			if err != nil {
@@ -436,7 +441,7 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 					deltaT := time.Since(r.LA).Hours()
 					uNow := float64(C.calculate_decay(C.double(r.U), C.double(currentLambda), C.double(deltaT)))
 
-					forceFlush := pressure > 1.2
+					forceFlush := pressure > 1.25
 
 					if uNow < threshold || forceFlush {
 						if migrateRecord(ctx, sourcePool, targetPool, sourceTable, targetTable, r.ID, r.PL, uNow, r.LA) {
@@ -457,6 +462,7 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 						"source", sourceTable,
 						"lambda", fmt.Sprintf("%.5f", currentLambda),
 						"pressure", fmt.Sprintf("%.2f", pressure),
+						"buoyancy_active", pressure < 0.90, // Updated Log
 						"ai_boost", isPredictiveBoost,
 						"belly_brake", bellyFactor < 1.0)
 				}
@@ -476,7 +482,7 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 }
 
 // --- SQL HELPERS ---
-
+// (Unverändert: emergencyEvacuate, migrateRecord, randInt, colorize)
 func emergencyEvacuate(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, sourceT, targetT string, limit int) error {
 	rows, err := sourcePool.Query(ctx, fmt.Sprintf("SELECT id, payload, utility_index, last_activity FROM %s LIMIT %d", sourceT, limit))
 	if err != nil {
@@ -536,4 +542,35 @@ func migrateRecord(ctx context.Context, sourcePool, targetPool *pgxpool.Pool, so
 
 func randInt(min, max int) int {
 	return min + rand.Intn(max-min+1)
+}
+
+// --- Colors ---
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[1;31m"
+	ColorYellow = "\033[1;33m"
+	ColorGreen  = "\033[1;32m"
+	ColorCyan   = "\033[1;36m"
+	ColorBlue   = "\033[1;34m"
+	ColorPurple = "\033[1;35m"
+	ColorWhite  = "\033[1;37m"
+)
+
+func colorize(tableName string) string {
+	switch tableName {
+	case "table0":
+		return ColorRed + tableName + ColorReset
+	case "table1":
+		return ColorYellow + tableName + ColorReset
+	case "table2":
+		return ColorGreen + tableName + ColorReset
+	case "table3":
+		return ColorCyan + tableName + ColorReset
+	case "table4":
+		return ColorBlue + tableName + ColorReset
+	case "deep_archive":
+		return ColorWhite + "ARCHIVE" + ColorReset
+	default:
+		return tableName
+	}
 }
