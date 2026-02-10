@@ -95,7 +95,7 @@ func printRow(name string, count int) {
 	if pct > 120.0 {
 		status = "🔴 OVERFLOW"
 		color = "\033[1;31m" // Rot
-	} else if pct > 100.0 {
+	} else if pct > 105.0 {
 		status = "🟠 High Load"
 		color = "\033[1;33m" // Gelb
 	} else if pct < 10.0 && count < 100 { // Nur warnen wenn wirklich leer

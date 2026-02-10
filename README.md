@@ -179,39 +179,6 @@ Once the utility of a record slips below the critical **Horizon Threshold** ($\e
 
 ---
 
-## <a name="test031"></a> 🧬 Test Report v0.3.1: Metabolic Efficiency
-
-**Date:** January 29, 2026 | **Subject:** 1024MB Stress Test & Bio-Rhythmic Load Simulation
-
-### 1. Executive Summary
-Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an adaptive batching mechanism. The system was subjected to a **1GB saturation test** followed by a dynamic user simulation.
-**Result:** The system demonstrated exceptional stability. It successfully resolved massive overflows but currently exhibits **"Metabolic Hyperactivity"**—processing data so efficiently that high-performance tiers become underutilized ("Starving") during low-traffic phases.
-
-### 2. Test Observations
-
-**Phase A: Saturation (The Flood)**
-* **Scenario:** Injection of 1,024,000 records (approx. 1GB).
-* **Observation:** All active tiers exceeded ideal capacity (>100% Fill).
-* **Status:** `🔴 OVERFLOW`. No memory leaks or deadlocks occurred.
-<p align="center"><img src="assets/test031_oversaaturated1.png" alt="Saturation" width="80%"></p>
-
-**Phase B: Dynamic Simulation (The Metabolism)**
-* **Scenario:** `user_simulator` cycled through *Morning Rush*, *Viral Spike*, and *Night Mode*.
-* **Observation:** The PID logic triggered high $\lambda$ values and increased batch sizes (up to 20k records). The backlog was cleared within minutes.
-<p align="center"><img src="assets/test031_equilibrium.png" alt="Equilibrium" width="80%"></p>
-
-**Phase C: Equilibrium & Starvation (Current State)**
-* **Scenario:** Prolonged "Night Mode" (Low Activity).
-* **Observation:** Fill levels dropped significantly below the target $\Phi$ ratio (~35-50% capacity).
-* **Status:** `🟡 STARVING`.
-* **Note:** Tier 4 (Archive) continues to grow (>120%), confirming data preservation.
-<p align="center"><img src="assets/test031_starvation.png" alt="Starvation" width="80%"></p>
-
-### 3. Conclusion & Roadmap to v0.4.0
-**Verdict:** SUCCESS. The system handles loads far exceeding 1GB.
-**Next Steps (v0.4.0):**
-1.  **Conservation Circuit:** Invert the PID logic to force $\lambda$ reduction (Hibernation) when a tier drops below 50% capacity.
-2.  **Recall Mechanism:** Implement "Viral Recall" to promote archived data back to Hot Tiers upon access.
 <blockquote>
   <strong>YaFaD v0.4.0 is out!</strong> 🚀<br>
   We taught the database to sleep at night and predict the morning rush.<br>
@@ -229,6 +196,22 @@ Release v0.3.1 introduces a **Quadratic PID Controller** ("Turbo Boost") and an 
 ### 1. System Overview (Component Diagram)
 Go manages I/O load and database connections, while the Rust Core module acts as the 'brain' for mathematical decay calculations, integrated via a high-performance CGO interface.
 
+#### - Physical Topology
+<p align="center">
+  <img src="assets/Physical_Topology.svg" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
+
+#### - Architecture
+<p align="center">
+  <img src="assets/AI_Architecture.svg" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
+
+#### - Migration Flow
+<p align="center">
+  <img src="assets/Migration_Flow.svg" alt="YaFaD_ai Black Hole Mechanism" width="100%">
+</p>
+
+#### - Rust/Go integration
 ```mermaid
 graph TD
     subgraph "The Nervous System (Go)"
