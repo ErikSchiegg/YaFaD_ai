@@ -19,7 +19,15 @@ const (
 	ConfigFile  = "yafad_config.json"
 )
 
-// Standard-Werte (Falls keine Config da ist)
+// Struktur muss exakt zum JSON passen, das main.go schreibt
+type SystemConfig struct {
+	Capacities    map[string]int `json:"capacities"`
+	TargetRatio   float64        `json:"target_ratio"`
+	SnifferActive bool           `json:"sniffer_active"`
+	LastUpdated   time.Time      `json:"last_updated"`
+}
+
+// Fallback Defaults
 var Capacities = map[string]int{
 	"table0": 20000,
 	"table1": 32360,
@@ -27,12 +35,10 @@ var Capacities = map[string]int{
 	"table3": 84720,
 	"table4": 137080,
 }
+var TargetRatio = 1.0
 
 func main() {
-	// 1. Versuche Config zu laden
-	loadConfig()
-
-	// 2. DB Connection
+	// DB Connection
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -50,12 +56,9 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 3. Loop
+	// Loop
 	for {
-		// Wir laden die Config bei jedem Tick neu (Hot-Reload!)
-		// So passt sich das Dashboard an, wenn du main.go neu startest.
-		loadConfig()
-
+		loadConfig() // Hot-Reload bei jedem Tick
 		clearScreen()
 		renderDashboard(ctx, pool)
 		time.Sleep(RefreshRate)
@@ -65,9 +68,15 @@ func main() {
 func loadConfig() {
 	data, err := os.ReadFile(ConfigFile)
 	if err == nil {
-		var loadedCaps map[string]int
-		if json.Unmarshal(data, &loadedCaps) == nil {
-			Capacities = loadedCaps
+		var conf SystemConfig
+		// Hier war der Fehler: Wir müssen in das Struct unmarshallen
+		if json.Unmarshal(data, &conf) == nil {
+			if len(conf.Capacities) > 0 {
+				Capacities = conf.Capacities
+			}
+			if conf.TargetRatio > 0 {
+				TargetRatio = conf.TargetRatio
+			}
 		}
 	}
 }
@@ -75,7 +84,6 @@ func loadConfig() {
 func renderDashboard(ctx context.Context, pool *pgxpool.Pool) {
 	var t0, t1, t2, t3, t4, archive int
 
-	// Fehler ignorieren
 	pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&t0)
 	pool.QueryRow(ctx, "SELECT count(*) FROM table1").Scan(&t1)
 	pool.QueryRow(ctx, "SELECT count(*) FROM table2").Scan(&t2)
@@ -84,12 +92,10 @@ func renderDashboard(ctx context.Context, pool *pgxpool.Pool) {
 	pool.QueryRow(ctx, "SELECT count(*) FROM deep_archive").Scan(&archive)
 
 	total := t0 + t1 + t2 + t3 + t4
-
-	// Basis-Kapazität für Info anzeigen
 	baseCap := Capacities["table0"]
 
 	fmt.Println(strings.Repeat("=", 65))
-	fmt.Printf("📊 YaFaD Monitor (Target Base: %d)\n", baseCap)
+	fmt.Printf("📊 YaFaD Monitor v0.6.7 (Real Cap: %d | Target: %.2f)\n", baseCap, TargetRatio)
 	fmt.Printf("   Total Biomass: %d records\n", total)
 	fmt.Println(strings.Repeat("=", 65))
 	fmt.Printf("%-8s | %-9s | %-9s | %-7s | %s\n", "Tier", "Current", "Ideal Cap", "Fill %", "Status")
@@ -112,32 +118,32 @@ func printRow(name string, count int) {
 		cap = 1
 	}
 
+	// Echte Füllstandsberechnung
 	pct := float64(count) / float64(cap) * 100.0
 
-	status := ""
-	color := "\033[0m" // Reset
+	// Status-Logik: Berücksichtigt jetzt das TargetRatio!
+	// Wenn Target 1.5 ist, ist 150% "Normal" (Grün).
+	normalizedPct := pct / TargetRatio
 
-	// Status Logik
-	if pct > 120.0 {
+	status := ""
+	color := "\033[0m"
+
+	if normalizedPct > 120.0 {
 		status = "🔴 OVERFLOW"
 		color = "\033[1;31m"
-	} else if pct > 105.0 {
+	} else if normalizedPct > 105.0 {
 		status = "🟠 High Load"
 		color = "\033[1;33m"
-	} else if pct < 1.0 && count == 0 {
+	} else if count == 0 {
 		status = "⚪ EMPTY"
 		color = "\033[1;30m"
-	} else if pct < 90.0 {
-		status = "🟢 Buoyancy Active"
-		color = "\033[1;32m"
 	} else {
 		status = "🟢 OPTIMAL"
 		color = "\033[1;32m"
 	}
 
-	// Bar
 	barLen := 10
-	filledLen := int(pct / 100.0 * float64(barLen))
+	filledLen := int(normalizedPct / 100.0 * float64(barLen))
 	if filledLen > barLen {
 		filledLen = barLen
 	}
