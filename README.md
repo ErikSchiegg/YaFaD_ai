@@ -4,17 +4,23 @@
 
 ---
 
-### 📉 Release v0.4.1: "The Belly Awareness Update" 🤰
+### 📉 Release v0.4.2: "The Buoyancy Update" 🎈
 
-**Date:** February 9, 2026 | **Focus:** Homeostasis, PID Control & Anti-Starvation
+**Date:** February 10, 2026 | **Focus:** Anti-Starvation & Smart Pacing
 
-**1. Executive Summary**
-Release v0.4.1 transforms YaFaD from a reactive script into a truly **homeostatic organism**. We introduced a **PID Controller (Proportional-Integral-Derivative)** and a **"Belly Awareness"** mechanism. The system now "feels" the pressure of the entire digestive tract (Tiers 0-4) and regulates the flow to prevent both overflows and empty stomachs.
+**1. The Problem: "Panic Flushing"**
+Previous versions were too aggressive. When T0 (Hot Tier) exceeded capacity, the system would panic and flush everything, causing the tier to drop to 0 records. This "Empty Stomach" syndrome hurt read performance.
 
-**2. Key Innovations**
-* **PID Controller 2nd Order:** Replaces simple logic with smooth adjustments based on error (P), history (I), and future trends (D).
-* **Belly Awareness (Feed-Forward):** The Hot Tier (T0) monitors the "Belly" (T2). If the belly is full (>95%), T0 autonomously brakes intake to prevent indigestion.
-* **Result:** Perfect Stasis. In a 200k record run, the system held exactly 200,000 records with $\Phi_{diff} \approx 0.01$ and $\lambda \approx 0.001$.
+**2. The Solution: Buoyancy Logic**
+We implemented a **Minimum Buoyancy Guard**.
+* **Anti-Starvation:** If a tier drops below **90% capacity**, the Cortex forces the decay rate ($\lambda$) to near-zero (Hibernation Mode).
+* **Effect:** Data is "floated" in the hot tier until fresh data arrives, ensuring T0 is always prime for high-speed reads.
+
+**3. Smart Bio-Generator**
+The load simulator now features a **Pacemaker**. Instead of blindly flooding the database, it monitors T0's internal pressure and adjusts injection speed dynamically (Inverted Exponential Curve).
+* **Result:** A smooth, organic data flow that maximizes throughput without triggering emergency dumps.
+
+> **Verdict:** *"YaFaD now breathes. It holds data when hungry and exhales when full."*
 
 <p align="center">
   <img src="assets/equilibrium_ckeck.png" alt="YaFaD Equilibrium Graph" width="100%">
@@ -178,17 +184,6 @@ Once the utility of a record slips below the critical **Horizon Threshold** ($\e
 * **Sedimentation (Optional):** In configured "Archive" modes, vaporized data is "Cast in Amber"—compressed into deep cold storage.
 
 ---
-
-<blockquote>
-  <strong>YaFaD v0.4.0 is out!</strong> 🚀<br>
-  We taught the database to sleep at night and predict the morning rush.<br>
-  ✅ <strong>Symmetric PID:</strong> No more empty tables at night.<br>
-  🧠 <strong>Cortex AI:</strong> Pre-warming based on historical usage.<br>
-  📊 <strong>Telemetry:</strong> Real-time CSV metrics.<br>
-  🛡️ <strong>Tested:</strong> Rock-solid at 5.5GB stress load.<br>
-  <br>
-  <em>Making the internet organic.</em> 🌱 #Golang #PostgreSQL #GreenIT
-</blockquote>
 
 
 ## 🏗 System Architecture

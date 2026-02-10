@@ -9,6 +9,7 @@ import "C"
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -305,8 +306,8 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	}
 	fmt.Println("----------------------------------------------------")
 	fmt.Println("🚀 Starting Engine...")
+	saveConfigToJSON(caps)
 	time.Sleep(1 * time.Second)
-
 	return caps, injectAmount
 }
 
@@ -367,7 +368,7 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 		pressure := float64(sourceCount) / float64(idealCapacity)
 
 		// TUNING: Starvation Guard reduziert auf 90% (weniger aggressiver Auftrieb)
-		if startTier <= 1 && pressure < 0.89 {
+		if startTier <= 1 && pressure < 1.01 {
 			currentLambda = min // Winterschlaf
 		} else {
 			pidOutput := pid.Update(pressure)
@@ -573,4 +574,15 @@ func colorize(tableName string) string {
 	default:
 		return tableName
 	}
+}
+
+// Speichert die Konfiguration für das Dashboard
+func saveConfigToJSON(caps map[string]int) {
+	file, err := json.MarshalIndent(caps, "", "  ")
+	if err != nil {
+		fmt.Println("⚠️ Could not save config file:", err)
+		return
+	}
+	_ = os.WriteFile("yafad_config.json", file, 0644)
+	fmt.Println("💾 Configuration saved to yafad_config.json")
 }
