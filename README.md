@@ -20,6 +20,10 @@ We’ve reached a massive milestone! YaFaD has evolved from a reactive script in
 <p align="center">
   <img src="assets/equilibrium_ckeck.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
+<p align="center">
+  <img src="assets/equilibrium_ckeck_long.png" alt="YaFaD Equilibrium Graph" width="100%">
+</p>
+
 
 # 🗺️ YaFaD Evolution Roadmap
 

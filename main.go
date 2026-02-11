@@ -15,9 +15,11 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"YaFaD_ai/internal/cortex"
@@ -30,17 +32,16 @@ import (
 const PHI = 1.61803398875
 const CONFIG_FILE = "yafad_config.json"
 const PHI_SUM_FACTOR = 16.326
-
-// TUNING: Headroom erhöht auf 1.2, damit T0 bei 100% statt 120% landet
 const ARCHITECTURE_HEADROOM = 1.20
 const TARGET_RATIO_FIXED = 1.0
 
 // --- CONFIG ---
 type SystemConfig struct {
-	Capacities    map[string]int `json:"capacities"`
-	TargetRatio   float64        `json:"target_ratio"` // Bleibt im JSON für Hot-Reload-Optionen
-	SnifferActive bool           `json:"sniffer_active"`
-	LastUpdated   time.Time      `json:"last_updated"`
+	Capacities      map[string]int `json:"capacities"`
+	TargetRatio     float64        `json:"target_ratio"`
+	SnifferActive   bool           `json:"sniffer_active"`
+	VanishThreshold string         `json:"vanish_threshold"`
+	LastUpdated     time.Time      `json:"last_updated"`
 }
 
 var (
@@ -95,6 +96,13 @@ func (r *StorageRouter) GetPool(tier int) *pgxpool.Pool {
 
 // --- MAIN ---
 func main() {
+	// 1. Context & Graceful Shutdown Setup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
 	// Logger
 	logPath := "/tmp/yafad_debug.log"
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
@@ -102,7 +110,15 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
-	// DB
+	// Shutdown Goroutine
+	go func() {
+		<-sigChan
+		fmt.Println("\n⚠️  Termination signal received! Initiating graceful shutdown...")
+		slog.Info("Shutting down gracefully... waiting for active workers to finish.")
+		cancel() // Signalisiert allen Workern den Abbruch
+	}()
+
+	// DB Connection (with Retry/Backoff instead of Panic)
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -113,44 +129,69 @@ func main() {
 	}
 	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
 
-	ctx := context.Background()
-	hotPool, err := pgxpool.New(ctx, connStr)
-	if err != nil {
-		panic(fmt.Sprintf("DB Error: %v", err))
+	var hotPool, coldPool *pgxpool.Pool
+	var err error
+
+	fmt.Print("⏳ Connecting to Database...")
+	for attempts := 1; attempts <= 10; attempts++ {
+		hotPool, err = pgxpool.New(ctx, connStr)
+		if err == nil {
+			err = hotPool.Ping(ctx)
+		}
+		if err == nil {
+			break
+		}
+		fmt.Printf(" [Attempt %d failed, retrying in 2s...]", attempts)
+		time.Sleep(2 * time.Second)
 	}
+
+	if err != nil {
+		fmt.Printf("\n❌ FATAL: Could not connect to DB after 10 attempts: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(" ✅ Connected!")
 	defer hotPool.Close()
-	coldPool, _ := pgxpool.New(ctx, connStr)
+
+	coldPool, _ = pgxpool.New(ctx, connStr)
 	defer coldPool.Close()
 
 	router := &StorageRouter{HotPool: hotPool, ColdPool: coldPool}
 
-	// 1. WIZARD (Streamlined)
+	// WIZARD
 	caps, injectCount := runSetupWizard(ctx, hotPool)
 
-	// Config Init (Hardcoded Target)
+	// Config Init
 	configMu.Lock()
 	globalConfig = SystemConfig{
-		Capacities:    caps,
-		TargetRatio:   TARGET_RATIO_FIXED, // 1.0
-		SnifferActive: true,
-		LastUpdated:   time.Now(),
+		Capacities:      caps,
+		TargetRatio:     TARGET_RATIO_FIXED,
+		SnifferActive:   true,
+		VanishThreshold: "10m",
+		LastUpdated:     time.Now(),
 	}
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
 
-	go configWatcher()
+	go configWatcher(ctx)
 
 	// Cortex
 	rustCore := &cortex.RustCoreFFI{LibraryPath: "./libyafd_core.so"}
 	brain := cortex.NewCortex("brain_data.json", rustCore)
 	go func() {
-		for range time.Tick(1 * time.Minute) {
-			brain.Persist()
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				brain.Persist() // Letztes Speichern vorm Tod
+				return
+			case <-ticker.C:
+				brain.Persist()
+			}
 		}
 	}()
 	fmt.Println("🧠 YaFaD_ai Cortex Online.")
 
-	// Lambda Bridge
 	var (
 		t0Lambda float64
 		lambdaMu sync.RWMutex
@@ -169,80 +210,94 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(5)
 
-	// Workers
+	// Workers (Pass Context for Cancellation)
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, brain, NewPID(1.5, 0.05, 0.2), 0, 0.005, 0.0001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
+		runHomeostaticWorker(ctx, router, brain, NewPID(1.5, 0.05, 0.2), 0, 0.005, 0.0001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
 	}()
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, nil, NewPID(1.2, 0.05, 0.2), 1, 0.005, 0.0001, 3.0, 10*time.Millisecond, 500*time.Millisecond, nil)
+		runHomeostaticWorker(ctx, router, nil, NewPID(1.2, 0.05, 0.2), 1, 0.005, 0.0001, 3.0, 10*time.Millisecond, 500*time.Millisecond, nil)
 	}()
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, nil, NewPID(0.8, 0.01, 0.1), 2, 0.005, 0.0001, 1.0, 50*time.Millisecond, 1*time.Second, nil)
+		runHomeostaticWorker(ctx, router, nil, NewPID(0.8, 0.01, 0.1), 2, 0.005, 0.0001, 1.0, 50*time.Millisecond, 1*time.Second, nil)
 	}()
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, nil, NewPID(0.5, 0.01, 0.1), 3, 0.005, 0.0001, 0.5, 1*time.Second, 10*time.Second, nil)
+		runHomeostaticWorker(ctx, router, nil, NewPID(0.5, 0.01, 0.1), 3, 0.005, 0.0001, 0.5, 1*time.Second, 10*time.Second, nil)
 	}()
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(router, nil, NewPID(0.2, 0.0, 0.0), 4, 0.001, 0.0001, 0.1, 1*time.Second, 30*time.Second, nil)
+		runHomeostaticWorker(ctx, router, nil, NewPID(0.2, 0.0, 0.0), 4, 0.001, 0.0001, 0.1, 1*time.Second, 30*time.Second, nil)
 	}()
 
-	// Monitoring
+	// Monitoring (Background Task)
 	monCaps := make(map[string]float64)
 	for k, v := range caps {
 		monCaps[k] = float64(v)
 	}
-	go monitoring.StartMonitor(hotPool, monitoring.MonitorConfig{
-		Interval: 5 * time.Second, TargetPhi: PHI, CSVFile: "yafad_metrics.csv", Capacities: monCaps,
-	}, getT0Lambda)
+
+	// Wir feuern den Monitor einfach ab. Wenn main.go sich beendet (wg.Wait() der Worker ist fertig),
+	// wird dieser Background-Prozess automatisch vom OS gekillt. Keine WaitGroup hierfür!
+	go func() {
+		monitoring.StartMonitor(hotPool, monitoring.MonitorConfig{
+			Interval: 5 * time.Second, TargetPhi: PHI, CSVFile: "yafad_metrics.csv", Capacities: monCaps,
+		}, getT0Lambda)
+	}()
 
 	// Injection
 	if injectCount > 0 {
 		go func() {
 			time.Sleep(2 * time.Second)
-			cmd := exec.Command("go", "run", "generator.go", "-count", fmt.Sprintf("%d", injectCount))
+			cmd := exec.CommandContext(ctx, "go", "run", "generator.go", "-count", fmt.Sprintf("%d", injectCount), "-mode", "scenario")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
 		}()
 	}
 
+	// Wir warten NUR noch auf die 5 Worker.
 	wg.Wait()
+	fmt.Println("👋 YaFaD has successfully and safely shut down.")
 }
 
-func configWatcher() {
+func configWatcher(ctx context.Context) {
 	lastModTime := time.Time{}
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(3 * time.Second)
-		fileInfo, err := os.Stat(CONFIG_FILE)
-		if err != nil {
-			continue
-		}
-		if fileInfo.ModTime().After(lastModTime) {
-			lastModTime = fileInfo.ModTime()
-			data, err := os.ReadFile(CONFIG_FILE)
-			if err == nil {
-				var newConfig SystemConfig
-				if json.Unmarshal(data, &newConfig) == nil {
-					configMu.Lock()
-					globalConfig.TargetRatio = newConfig.TargetRatio
-					configMu.Unlock()
-					slog.Info("Config Hot-Reloaded", "target_ratio", newConfig.TargetRatio)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fileInfo, err := os.Stat(CONFIG_FILE)
+			if err != nil {
+				continue
+			}
+			if fileInfo.ModTime().After(lastModTime) {
+				lastModTime = fileInfo.ModTime()
+				data, err := os.ReadFile(CONFIG_FILE)
+				if err == nil {
+					var newConfig SystemConfig
+					if json.Unmarshal(data, &newConfig) == nil {
+						configMu.Lock()
+						globalConfig.TargetRatio = newConfig.TargetRatio
+						globalConfig.VanishThreshold = newConfig.VanishThreshold
+						configMu.Unlock()
+						slog.Info("Config Hot-Reloaded", "target", newConfig.TargetRatio, "vanish", newConfig.VanishThreshold)
+					}
 				}
 			}
 		}
 	}
 }
 
-// --- WIZARD (SIMPLIFIED) ---
 func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, int) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║ 📐 YaFaD ARCHITECT (v0.7.3)                      ║")
+	fmt.Println("║ 🛡️  YaFaD ARCHITECT (v0.8.1 Resilient)           ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 
 	fmt.Print("❓ Flush tables? [y/N]: ")
@@ -252,84 +307,17 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 		fmt.Println("🧹 Tables flushed.")
 	}
 
-	fmt.Println("\nMode:")
-	fmt.Println("  [S] Simulation")
-	fmt.Println("  [P] Production (Scan)")
-	fmt.Print("👉 Mode [S/p]: ")
-	modeStr, _ := reader.ReadString('\n')
-	mode := strings.ToLower(strings.TrimSpace(modeStr))
-	if mode == "" {
-		mode = "s"
+	totalRecords := 500000
+	injectAmount := 500000
+
+	fmt.Printf("🌊 Inject Count [default %d]: ", totalRecords)
+	inputInj, _ := reader.ReadString('\n')
+	inputInj = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(inputInj, ".", ""), ",", ""))
+	if val, err := strconv.Atoi(inputInj); err == nil && val > 0 {
+		totalRecords = val
+		injectAmount = val
 	}
 
-	totalRecords := 0
-	injectAmount := 0
-
-	if strings.HasPrefix(mode, "s") {
-		// SIMULATION
-		fmt.Printf("🌊 Inject Count [default 500000]: ")
-		inputInj, _ := reader.ReadString('\n')
-		inputInj = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(inputInj, ".", ""), ",", ""))
-		if val, err := strconv.Atoi(inputInj); err == nil && val > 0 {
-			totalRecords = val
-		} else {
-			totalRecords = 500000
-		}
-		injectAmount = totalRecords
-
-	} else {
-		// PRODUCTION
-		fmt.Print("🔍 Scan Source? [Y/n]: ")
-		scanIn, _ := reader.ReadString('\n')
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(scanIn)), "n") {
-			fmt.Printf("🏭 Total Volume [default 500000]: ")
-			inputTot, _ := reader.ReadString('\n')
-			inputTot = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(inputTot, ".", ""), ",", ""))
-			if val, err := strconv.Atoi(inputTot); err == nil && val > 0 {
-				totalRecords = val
-			} else {
-				totalRecords = 500000
-			}
-		} else {
-			defaultConn := "postgres://eriks:test@localhost:5432/yafad_sandbox?sslmode=disable"
-			fmt.Printf("🔌 Conn [default: sandbox]: ")
-			connStr, _ := reader.ReadString('\n')
-			if strings.TrimSpace(connStr) == "" {
-				connStr = defaultConn
-			}
-
-			defaultTable := "user_posts"
-			fmt.Printf("📑 Table [default: user_posts]: ")
-			tableName, _ := reader.ReadString('\n')
-			if strings.TrimSpace(tableName) == "" {
-				tableName = defaultTable
-			}
-
-			fmt.Printf("⏳ Scanning '%s'...", tableName)
-			srcPool, err := pgxpool.New(context.Background(), connStr)
-			if err != nil {
-				fmt.Printf("❌ Err: %v. Using 500k.\n", err)
-				totalRecords = 500000
-			} else {
-				var count int
-				err := srcPool.QueryRow(context.Background(), fmt.Sprintf("SELECT count(*) FROM %s", tableName)).Scan(&count)
-				srcPool.Close()
-				if err != nil {
-					fmt.Printf("❌ Err: %v. Using 500k.\n", err)
-					totalRecords = 500000
-				} else {
-					totalRecords = count
-					fmt.Printf(" ✅ Found %d records.\n", count)
-					if totalRecords == 0 {
-						totalRecords = 10000
-					}
-				}
-			}
-		}
-		injectAmount = 0
-	}
-
-	// Geometry Calculation with 1.20 Headroom
 	targetVolume := float64(totalRecords) * ARCHITECTURE_HEADROOM
 	baseCap := int(targetVolume / PHI_SUM_FACTOR)
 	if baseCap < 1000 {
@@ -343,7 +331,11 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	caps["table3"] = int(float64(caps["table2"]) * PHI)
 	caps["table4"] = int(float64(caps["table3"]) * PHI)
 
-	saveConfigToJSON(SystemConfig{Capacities: caps, TargetRatio: TARGET_RATIO_FIXED, SnifferActive: true, LastUpdated: time.Now()})
+	saveConfigToJSON(SystemConfig{
+		Capacities: caps, TargetRatio: TARGET_RATIO_FIXED, SnifferActive: true,
+		VanishThreshold: "10m",
+		LastUpdated:     time.Now(),
+	})
 
 	fmt.Printf("🏗️  Configured T0: %d | Total: %d\n", caps["table0"], totalRecords)
 	fmt.Println("🚀 Starting...")
@@ -356,12 +348,12 @@ func saveConfigToJSON(config SystemConfig) {
 	_ = os.WriteFile(CONFIG_FILE, file, 0644)
 }
 
-// --- WORKER ---
-func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDController, startTier int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
-	ctx := context.Background()
+// --- WORKER (With Context & Exponential Backoff) ---
+func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cortex.Cortex, pid *PIDController, startTier int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
 	currentLambda := baseLambda
 	threshold := 0.4
 	currentSleep := maxSleep
+	errorBackoff := 1 * time.Second // Start Backoff für DB Fehler
 
 	sourceTier := startTier
 	targetTier := startTier + 1
@@ -381,16 +373,43 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 	lastObservation := time.Now()
 
 	for {
+		// 1. Graceful Shutdown Check
+		select {
+		case <-ctx.Done():
+			slog.Info("Worker stopped gracefully.", "tier", sourceTable)
+			return
+		default:
+		}
+
 		configMu.RLock()
 		targetRatio := globalConfig.TargetRatio
 		idealCapacity := globalConfig.Capacities[sourceTable]
+		vanishStr := globalConfig.VanishThreshold
 		configMu.RUnlock()
+
+		vanishDur, _ := time.ParseDuration(vanishStr)
+		if vanishDur == 0 {
+			vanishDur = 1 * time.Hour
+		}
 
 		sourcePool := router.GetPool(sourceTier)
 		targetPool := router.GetPool(targetTier)
 
 		var sourceCount int
-		sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
+		err := sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
+
+		// 2. Exponential Backoff bei DB Verbindungsverlust
+		if err != nil {
+			slog.Warn("DB Error, applying backoff...", "tier", sourceTable, "err", err, "sleep", errorBackoff)
+			time.Sleep(errorBackoff)
+			errorBackoff *= 2
+			if errorBackoff > 60*time.Second {
+				errorBackoff = 60 * time.Second
+			}
+			continue // Nächster Versuch
+		} else {
+			errorBackoff = 1 * time.Second // Reset bei Erfolg
+		}
 
 		bellyFactor := 1.0
 		if bellyTable != "" {
@@ -466,8 +485,8 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 					uNow := float64(C.calculate_decay(C.double(r.U), C.double(currentLambda), C.double(deltaT)))
 
 					if startTier == 4 {
-						isOld := time.Since(r.LA) > 1*time.Hour
-						if isOld && uNow < 0.5 {
+						isOld := time.Since(r.LA) > vanishDur
+						if isOld && uNow < 0.8 {
 							uNow = 0.001
 						}
 					}
@@ -481,6 +500,10 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 						}
 					}
 				}
+			} else {
+				// DB Read Fehler beim Fetch
+				slog.Warn("DB Read Error in Batch", "tier", sourceTable, "err", err)
+				time.Sleep(errorBackoff)
 			}
 		} else {
 			currentSleep *= 2
@@ -488,7 +511,14 @@ func runHomeostaticWorker(router *StorageRouter, brain *cortex.Cortex, pid *PIDC
 				currentSleep = maxSleep
 			}
 		}
-		time.Sleep(currentSleep)
+
+		// Letzter Check vorm Sleep (damit Shutdown schnell geht)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(currentSleep):
+			// Weiter im Loop
+		}
 	}
 }
 
@@ -512,9 +542,12 @@ func emergencyEvacuate(ctx context.Context, sourcePool, targetPool *pgxpool.Pool
 	if len(ids) == 0 {
 		return nil
 	}
-	targetPool.CopyFrom(ctx, pgx.Identifier{targetT}, []string{"id", "payload", "utility_index", "last_activity"}, pgx.CopyFromRows(data))
-	sourcePool.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = ANY($1)", sourceT), ids)
-	return nil
+
+	_, err = targetPool.CopyFrom(ctx, pgx.Identifier{targetT}, []string{"id", "payload", "utility_index", "last_activity"}, pgx.CopyFromRows(data))
+	if err == nil {
+		sourcePool.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = ANY($1)", sourceT), ids)
+	}
+	return err
 }
 
 func migrateRecord(ctx context.Context, sP, tP *pgxpool.Pool, sT, tT, id, pl string, u float64, la time.Time) bool {
