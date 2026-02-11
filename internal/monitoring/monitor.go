@@ -44,6 +44,10 @@ func StartMonitor(pool *pgxpool.Pool, cfg Config, getLambda func() float64) {
 
 	fmt.Println("📊 Monitoring active. Writing to", cfg.CSVFile)
 
+	// 1. Monitor Instanz einmalig vor dem Loop erstellen
+	mon := NewMonitor()
+
+	// Das ist deine funktionierende Haupt-Schleife
 	for range ticker.C {
 		ctx := context.Background()
 
@@ -55,6 +59,11 @@ func StartMonitor(pool *pgxpool.Pool, cfg Config, getLambda func() float64) {
 		pool.QueryRow(ctx, "SELECT count(*) FROM table4").Scan(&t4)
 		pool.QueryRow(ctx, "SELECT count(*) FROM deep_archive").Scan(&archive)
 
+		// ---------------------------------------------------------
+		// 2. DIES IST DIE MAGIE: Hier schicken wir die frisch
+		// gelesenen Werte direkt an unsere Prometheus-Brücke!
+		// ---------------------------------------------------------
+
 		total := t0 + t1 + t2 + t3 + t4 + archive
 		lambda := getLambda()
 
@@ -65,12 +74,19 @@ func StartMonitor(pool *pgxpool.Pool, cfg Config, getLambda func() float64) {
 		phiDiff := math.Abs(cfg.TargetPhi - ratio)
 		runtime := int(time.Since(startTime).Seconds())
 
+		// ---------------------------------------------------------
+		// DIES IST DIE MAGIE: Hier schicken wir die frisch
+		// gelesenen Werte direkt an unsere Prometheus-Brücke!
+		mon.RecordSystemIntel(lambda, phiDiff)
+		mon.RecordState(t0, t1, t2, t3, t4, archive) // Nur noch dieser EINE Aufruf mit 6 Parametern
+		// ---------------------------------------------------------
+
 		// CSV Write
 		record := []string{
 			time.Now().Format(time.RFC3339),
 			fmt.Sprintf("%d", runtime),
 			fmt.Sprintf("%d", total),
-			fmt.Sprintf("%d", t0),
+			fmt.Sprintf("%d", t0), // Hier war das "AC"
 			fmt.Sprintf("%d", t1),
 			fmt.Sprintf("%d", t2),
 			fmt.Sprintf("%d", t3),
