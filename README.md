@@ -15,13 +15,10 @@ We’ve reached a massive milestone! YaFaD has evolved from a reactive script in
 * 🔭 **Production Auto-Scout:** In Production mode, YaFaD acts as a scout. It connects to your source database, scans the actual table size (e.g., `user_posts`), and dynamically shape-shifts its own architecture to perfectly digest that specific table.
 * 🎬 **Scenario Mode & Accelerated Aging:** Testing the "Deep Archive" is now a breeze. The generator features a new `-mode scenario` flag that simulates natural data lifecycles: **Act 1 (The Flood)** injects data, followed by **Act 2 (The Lull)** where the system rests. Combined with a new, hot-reloadable `VanishThreshold` (e.g., `10m`), you can watch YaFaD flush cold data into the Deep Archive at warp speed.
 
-**The Result:** A rock-solid, homeostatic database engine that breathes in data waves, digests them smoothly through its tiers, and permanently archives the cold "biomass"—all without breaking a sweat or needing manual intervention.
+**The Result:** A rock-solid, homeostatic database engine that breathes in data waves, digests them smoothly through its tiers, and permanently archives the cold "biomass"—all without breaking a sweat or needing manual intervention. Here shown in the Grafa integration for somw admin solace:
 
 <p align="center">
-  <img src="assets/equilibrium_ckeck.png" alt="YaFaD Equilibrium Graph" width="100%">
-</p>
-<p align="center">
-  <img src="assets/equilibrium_ckeck_long.png" alt="YaFaD Equilibrium Graph" width="100%">
+  <img src="assets/Grafana_integration.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
 
 

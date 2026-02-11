@@ -12,15 +12,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"YaFaD_ai/internal/cortex"
 	"YaFaD_ai/internal/monitoring"
@@ -36,11 +41,16 @@ const ARCHITECTURE_HEADROOM = 1.20
 const TARGET_RATIO_FIXED = 1.0
 
 // --- CONFIG ---
+type ResourceLimits struct {
+	MaxCpuPercent int `json:"max_cpu_percent"`
+}
+
 type SystemConfig struct {
 	Capacities      map[string]int `json:"capacities"`
 	TargetRatio     float64        `json:"target_ratio"`
 	SnifferActive   bool           `json:"sniffer_active"`
 	VanishThreshold string         `json:"vanish_threshold"`
+	Limits          ResourceLimits `json:"limits"` // <-- NEU
 	LastUpdated     time.Time      `json:"last_updated"`
 }
 
@@ -158,7 +168,15 @@ func main() {
 	router := &StorageRouter{HotPool: hotPool, ColdPool: coldPool}
 
 	// WIZARD
-	caps, injectCount := runSetupWizard(ctx, hotPool)
+	caps, injectCount, cpuPercent := runSetupWizard(ctx, hotPool)
+
+	// CPU LIMIT SETZEN (Hardware-Drossel via Go Runtime)
+	maxCores := int(math.Ceil(float64(runtime.NumCPU()) * (float64(cpuPercent) / 100.0)))
+	if maxCores < 1 {
+		maxCores = 1
+	}
+	runtime.GOMAXPROCS(maxCores)
+	slog.Info("Hardware Throttling Active", "max_cores", maxCores, "cpu_percent", cpuPercent)
 
 	// Config Init
 	configMu.Lock()
@@ -167,6 +185,7 @@ func main() {
 		TargetRatio:     TARGET_RATIO_FIXED,
 		SnifferActive:   true,
 		VanishThreshold: "10m",
+		Limits:          ResourceLimits{MaxCpuPercent: cpuPercent},
 		LastUpdated:     time.Now(),
 	}
 	saveConfigToJSON(globalConfig)
@@ -246,6 +265,19 @@ func main() {
 		}, getT0Lambda)
 	}()
 
+	// --- NEU: PROMETHEUS METRICS SERVER ---
+	go func() {
+		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
+		http.Handle("/metrics", promhttp.Handler())
+
+		// Starte den Server auf Port 2112.
+		// Wir ignorieren Fehler hier für den Moment, damit es den Main-Prozess nicht blockiert.
+		if err := http.ListenAndServe(":2112", nil); err != nil && err != http.ErrServerClosed {
+			slog.Error("Prometheus Server failed", "error", err)
+		}
+	}()
+	// --------------------------------------
+
 	// Injection
 	if injectCount > 0 {
 		go func() {
@@ -294,10 +326,10 @@ func configWatcher(ctx context.Context) {
 	}
 }
 
-func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, int) {
+func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, int, int) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Println("║ 🛡️  YaFaD ARCHITECT (v0.8.1 Resilient)           ║")
+	fmt.Println("║ 🛡️  YaFaD ARCHITECT & RESOURCE BROKER            ║")
 	fmt.Println("╚══════════════════════════════════════════════════╝")
 
 	fmt.Print("❓ Flush tables? [y/N]: ")
@@ -308,16 +340,59 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	}
 
 	totalRecords := 500000
-	injectAmount := 500000
-
-	fmt.Printf("🌊 Inject Count [default %d]: ", totalRecords)
+	fmt.Printf("🌊 Inject/Migration Count [default %d]: ", totalRecords)
 	inputInj, _ := reader.ReadString('\n')
 	inputInj = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(inputInj, ".", ""), ",", ""))
 	if val, err := strconv.Atoi(inputInj); err == nil && val > 0 {
 		totalRecords = val
-		injectAmount = val
 	}
 
+	// --- RESSOURCE VERHANDLUNG (DER LOOP) ---
+	numCores := runtime.NumCPU()
+	cpuPercent := 50             // Default
+	baselineRpsPerCore := 2500.0 // Angenommene Basis-Verdauungs-Geschwindigkeit pro CPU-Kern
+
+	for {
+		fmt.Printf("\n💻 System Analysis: Detected %d CPU cores.\n", numCores)
+		fmt.Printf("❓ Max CPU usage allowed for YaFaD (1-100%%) [default %d]: ", cpuPercent)
+		inputCpu, _ := reader.ReadString('\n')
+		inputCpu = strings.TrimSpace(inputCpu)
+
+		if inputCpu != "" {
+			if val, err := strconv.Atoi(inputCpu); err == nil && val > 0 && val <= 100 {
+				cpuPercent = val
+			} else {
+				fmt.Println("❌ Invalid input. Please enter a percentage between 1 and 100.")
+				continue
+			}
+		}
+
+		// Kalkulation
+		effectiveCores := float64(numCores) * (float64(cpuPercent) / 100.0)
+		if effectiveCores < 0.5 {
+			effectiveCores = 0.5
+		} // Minimum
+
+		// Wir rechnen mit einem Multiplikator von 2.5, da Daten über mehrere Tiers (T0-T4) fließen müssen
+		digestionPenalty := 2.5
+		estimatedRps := baselineRpsPerCore * effectiveCores
+		estimatedSeconds := (float64(totalRecords) * digestionPenalty) / estimatedRps
+		estDuration := time.Duration(estimatedSeconds) * time.Second
+
+		fmt.Println("\n📊 MIGRATION ESTIMATE:")
+		fmt.Printf("   ├─ Allocated Compute: %.1f Cores (%d%%)\n", effectiveCores, cpuPercent)
+		fmt.Printf("   ├─ Est. Digestion Speed: %.0f operations/sec\n", estimatedRps)
+		fmt.Printf("   └─ Time to Harmony: ~%v\n", estDuration.Round(time.Second))
+
+		fmt.Print("\n❓ Accept this resource plan? (Y to accept / N to adjust): ")
+		confirm, _ := reader.ReadString('\n')
+		confirm = strings.ToLower(strings.TrimSpace(confirm))
+		if confirm == "" || strings.HasPrefix(confirm, "y") {
+			break // Verlassen des Loops -> Verhandlung erfolgreich!
+		}
+	}
+
+	// Architektur-Berechnung
 	targetVolume := float64(totalRecords) * ARCHITECTURE_HEADROOM
 	baseCap := int(targetVolume / PHI_SUM_FACTOR)
 	if baseCap < 1000 {
@@ -331,16 +406,11 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	caps["table3"] = int(float64(caps["table2"]) * PHI)
 	caps["table4"] = int(float64(caps["table3"]) * PHI)
 
-	saveConfigToJSON(SystemConfig{
-		Capacities: caps, TargetRatio: TARGET_RATIO_FIXED, SnifferActive: true,
-		VanishThreshold: "10m",
-		LastUpdated:     time.Now(),
-	})
-
-	fmt.Printf("🏗️  Configured T0: %d | Total: %d\n", caps["table0"], totalRecords)
-	fmt.Println("🚀 Starting...")
+	fmt.Printf("\n🏗️  Configured T0: %d | Total Headroom: %.0f\n", caps["table0"], targetVolume)
+	fmt.Println("🚀 Initializing Organism...")
 	time.Sleep(1 * time.Second)
-	return caps, injectAmount
+
+	return caps, totalRecords, cpuPercent
 }
 
 func saveConfigToJSON(config SystemConfig) {
