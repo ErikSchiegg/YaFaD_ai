@@ -29,8 +29,8 @@ We’ve reached a massive milestone! YaFaD has evolved from a reactive script in
 
 | Phase / Version | Theme | Key Features | Status |
 | :--- | :--- | :--- | :--- |
-| **v0.8.1** | **Resilience & Survival** 🛡️ | • Graceful Shutdown (Signal Handling)<br>• Exponential Backoff for DB connection drops<br>• Safe Startup-Waiting | 🟢 In Progress |
-| **v0.8.5** | **The Strangler Fig** 🌳 | • YaFaD Smart Proxy (Query Router)<br>• Zero-Downtime Migration (Legacy -> YaFaD)<br>• Fallback-Reads to original legacy tables | 🟡 Planned |
+| **v0.8.1** | **Resilience & Survival** 🛡️ | • Graceful Shutdown (Signal Handling)<br>• Exponential Backoff for DB connection drops<br>• Safe Startup-Waiting | 🟢  |
+| **v0.8.5** | **The Strangler Fig** 🌳 | • YaFaD Smart Proxy (Query Router)<br>• Zero-Downtime Migration (Legacy -> YaFaD)<br>• Fallback-Reads to original legacy tables | 🟢 |
 | **v0.9.0** | **Multi-Organism** 🦠 | • Parallel migration of multiple tables<br>• Dynamic spawning of T0-T4 pyramids per table<br>• Global memory management across all instances | 🟡 Planned |
 | **v1.0.0** | **Production Ready** 🚀 | • Full containerization (Docker/K8s)<br>• Prometheus/Grafana dashboard integration<br>• Certified stability & security audits | ⚪ Future |
 | **v1.5.0** | **Deep Cortex (RL)** 🧠 | • Reinforcement Learning for `Lambda` control<br>• Real-time anomaly detection in data streams<br>• Predictive pre-archiving ahead of load spikes | ⚪ Future |
