@@ -1,12 +1,13 @@
 {
   "capacities": {
-    "table0": 294009,
-    "table1": 475716,
-    "table2": 769724,
-    "table3": 1245439,
-    "table4": 2015162
+    "table0": 36751,
+    "table1": 59464,
+    "table2": 96214,
+    "table3": 155677,
+    "table4": 251890
   },
   "target_ratio": 1,
   "sniffer_active": true,
-  "last_updated": "2026-02-10T23:55:57.766253986+01:00"
+  "vanish_threshold": "10m",
+  "last_updated": "2026-02-11T08:17:36.27425261+01:00"
 }
