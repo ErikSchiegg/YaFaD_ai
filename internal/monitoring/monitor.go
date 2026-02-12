@@ -77,7 +77,7 @@ func StartMonitor(pool *pgxpool.Pool, cfg Config, getLambda func() float64) {
 		// ---------------------------------------------------------
 		// DIES IST DIE MAGIE: Hier schicken wir die frisch
 		// gelesenen Werte direkt an unsere Prometheus-Brücke!
-		mon.RecordSystemIntel(lambda, phiDiff)
+		mon.RecordSystemIntel(lambda, phiDiff, total)
 		mon.RecordState(t0, t1, t2, t3, t4, archive) // Nur noch dieser EINE Aufruf mit 6 Parametern
 		// ---------------------------------------------------------
 

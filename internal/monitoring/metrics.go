@@ -11,24 +11,30 @@ import (
 var (
 	LogMessagesTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "yafad_log_messages_total",
-		Help: "Gesamtzahl der von Yafad geschriebenen Log-Nachrichten",
+		Help: "Total number of log messages written by Yafad",
 	})
 
 	StateValues = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "yafad_state_value",
-		Help: "Aktuelle Werte der Yafad States (t0 bis t4)",
+		Help: "Current values of Yafad states (t0 to t4 and deep_archive)",
 	}, []string{"state_index"})
 
-	// NEU: Lambda Wert
+	// NEW: Lambda Value
 	LambdaValue = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "yafad_lambda_value",
-		Help: "Aktueller T0 Lambda (Verfallsrate) Wert",
+		Help: "Current T0 Lambda (decay rate) value",
 	})
 
-	// NEU: Phi Diff (Maß für die "Harmony")
+	// NEW: Phi Diff (Measure of "Harmony")
 	PhiDiffValue = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "yafad_phi_diff_value",
-		Help: "Abweichung vom perfekten Goldenen Schnitt (Phi)",
+		Help: "Deviation from the perfect Golden Ratio (Phi)",
+	})
+
+	// NEW: Total Biomass Gauge
+	TotalBiomassValue = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "yafad_total_biomass",
+		Help: "Total biomass (record count) in the system",
 	})
 )
 
@@ -56,8 +62,10 @@ func (m *Monitor) RecordState(t0, t1, t2, t3, t4, archive int) {
 	StateValues.WithLabelValues("deep_archive").Set(float64(archive))
 }
 
-// NEU: Funktion um die System-Intelligenz an Prometheus zu senden
-func (m *Monitor) RecordSystemIntel(lambda, phiDiff float64) {
+// NEW: Function to send system intelligence to Prometheus
+// Now includes 'total' biomass to update all high-level metrics at once
+func (m *Monitor) RecordSystemIntel(lambda, phiDiff float64, total int) {
 	LambdaValue.Set(lambda)
 	PhiDiffValue.Set(phiDiff)
+	TotalBiomassValue.Set(float64(total))
 }
