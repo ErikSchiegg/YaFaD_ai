@@ -1,43 +1,90 @@
 #!/bin/bash
 
-echo "🏗️  Building YaFaD v0.4.0 Release..."
+# Konfiguration
+VERSION="v0.8.6"
+RELEASE_DIR="release_${VERSION}"
+RUST_DIR="core"  # KORRIGIERT: Hier liegt die Cargo.toml
+GRAFANA_SRC="grafana/grafana.json"
+
+echo "🚀 Starting YaFaD Build Process for ${VERSION}..."
 
 # 1. Aufräumen & Dependencies checken
 echo "🧹 Tidy up Go modules..."
 go mod tidy
 
-# 2. Rust Core bauen (Release Mode - High Optimization)
-echo "🦀 Building Rust Core (libyafad_core)..."
-cd core
+# 2. Rust Cortex bauen
+echo "🦀 Building Rust Cortex in '${RUST_DIR}'..."
+# Check ob Ordner existiert
+if [ ! -d "$RUST_DIR" ]; then
+    echo "❌ Error: Directory '$RUST_DIR' not found!"
+    exit 1
+fi
+
+cd "$RUST_DIR"
 cargo build --release
 if [ $? -ne 0 ]; then
     echo "❌ Rust build failed!"
     exit 1
 fi
-cd ..
+cd .. # Zurück zum Root
 
-# 3. Output Directory erstellen
-mkdir -p release_v0.4.0
+# 3. Release Directory erstellen
+if [ -d "$RELEASE_DIR" ]; then
+    rm -rf "$RELEASE_DIR"
+fi
+mkdir -p "$RELEASE_DIR"
 
 # 4. Shared Library kopieren
-# WICHTIG: Die Go-Binary braucht diese Bibliothek zur Laufzeit!
 echo "📦 Copying Shared Library..."
-cp core/target/release/libyafad_core.so release_v0.4.0/
+# Wir suchen im target/release Ordner von Rust
+RUST_TARGET="${RUST_DIR}/target/release"
 
-# 5. Go Binaries bauen
-echo "🐹 Building Go Binaries..."
-
-# Binary 1: The Engine (Metabolism)
-# Wir nennen es 'yafad_engine', basierend auf decay_worker.go
-go build -o release_v0.4.0/yafad_engine decay_worker.go
-
-# Binary 2: The Simulator (User)
-go build -o release_v0.4.0/yafad_simulator user_simulator.go
-
-# 6. README kopieren (Optional aber empfohlen)
-if [ -f "README.md" ]; then
-    cp README.md release_v0.4.0/
+# Versuche spezifische Namen oder nimm die erste .so Datei, die wir finden
+if [ -f "${RUST_TARGET}/libyafad_cortex.so" ]; then
+    cp "${RUST_TARGET}/libyafad_cortex.so" "$RELEASE_DIR/"
+    echo "   -> Found libyafad_cortex.so"
+elif [ -f "${RUST_TARGET}/libyafad_core.so" ]; then
+    cp "${RUST_TARGET}/libyafad_core.so" "$RELEASE_DIR/"
+    echo "   -> Found libyafad_core.so"
+else
+    # Fallback: Nimm irgendeine .so Datei (hoffen wir, es ist die richtige)
+    cp "${RUST_TARGET}/"*.so "$RELEASE_DIR/" 2>/dev/null
+    if [ $? -ne 0 ]; then
+         echo "❌ Error: No .so library found in ${RUST_TARGET}!"
+         exit 1
+    fi
+    echo "   -> Found library via wildcard"
 fi
 
-echo "✅ Build complete! Artifacts are in 'release_v0.4.0/'"
-ls -lh release_v0.4.0/
+# 5. Go Binaries bauen
+echo "🐹 Building Go Microservices..."
+
+echo "   - Building Core (main)..."
+go build -o "${RELEASE_DIR}/yafad_core" main.go
+
+echo "   - Building Proxy..."
+go build -o "${RELEASE_DIR}/yafad_proxy" proxy.go
+
+echo "   - Building Decay Worker..."
+go build -o "${RELEASE_DIR}/yafad_worker" decay_worker.go
+
+echo "   - Building User Simulator..."
+go build -o "${RELEASE_DIR}/yafad_simulator" user_simulator.go
+
+# 6. Assets kopieren
+echo "📄 Copying Assets..."
+if [ -f "README.md" ]; then
+    cp README.md "$RELEASE_DIR/"
+fi
+
+mkdir -p "${RELEASE_DIR}/grafana"
+if [ -f "$GRAFANA_SRC" ]; then
+    cp "$GRAFANA_SRC" "${RELEASE_DIR}/grafana/"
+fi
+
+# 7. Archivieren
+echo "🎁 Creating Release Archive..."
+tar -czvf "yafad-${VERSION}-linux-amd64.tar.gz" "$RELEASE_DIR"
+
+echo "✅ Build complete!"
+echo "   -> Archive: yafad-${VERSION}-linux-amd64.tar.gz"

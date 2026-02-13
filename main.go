@@ -50,7 +50,7 @@ type SystemConfig struct {
 	TargetRatio     float64        `json:"target_ratio"`
 	SnifferActive   bool           `json:"sniffer_active"`
 	VanishThreshold string         `json:"vanish_threshold"`
-	Limits          ResourceLimits `json:"limits"` // <-- NEU
+	Limits          ResourceLimits `json:"limits"`
 	LastUpdated     time.Time      `json:"last_updated"`
 }
 
@@ -106,29 +106,24 @@ func (r *StorageRouter) GetPool(tier int) *pgxpool.Pool {
 
 // --- MAIN ---
 func main() {
-	// 1. Context & Graceful Shutdown Setup
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Logger
 	logPath := "/tmp/yafad_debug.log"
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	defer logFile.Close()
 	logger := slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
-	// Shutdown Goroutine
 	go func() {
 		<-sigChan
 		fmt.Println("\n⚠️  Termination signal received! Initiating graceful shutdown...")
-		slog.Info("Shutting down gracefully... waiting for active workers to finish.")
-		cancel() // Signalisiert allen Workern den Abbruch
+		cancel()
 	}()
 
-	// DB Connection (with Retry/Backoff instead of Panic)
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -167,10 +162,8 @@ func main() {
 
 	router := &StorageRouter{HotPool: hotPool, ColdPool: coldPool}
 
-	// WIZARD
 	caps, injectCount, cpuPercent := runSetupWizard(ctx, hotPool)
 
-	// CPU LIMIT SETZEN (Hardware-Drossel via Go Runtime)
 	maxCores := int(math.Ceil(float64(runtime.NumCPU()) * (float64(cpuPercent) / 100.0)))
 	if maxCores < 1 {
 		maxCores = 1
@@ -178,7 +171,6 @@ func main() {
 	runtime.GOMAXPROCS(maxCores)
 	slog.Info("Hardware Throttling Active", "max_cores", maxCores, "cpu_percent", cpuPercent)
 
-	// Config Init
 	configMu.Lock()
 	globalConfig = SystemConfig{
 		Capacities:      caps,
@@ -193,7 +185,6 @@ func main() {
 
 	go configWatcher(ctx)
 
-	// Cortex
 	rustCore := &cortex.RustCoreFFI{LibraryPath: "./libyafd_core.so"}
 	brain := cortex.NewCortex("brain_data.json", rustCore)
 	go func() {
@@ -202,7 +193,7 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
-				brain.Persist() // Letztes Speichern vorm Tod
+				brain.Persist()
 				return
 			case <-ticker.C:
 				brain.Persist()
@@ -229,10 +220,11 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(5)
 
-	// Workers (Pass Context for Cancellation)
+	// WORKERS
 	go func() {
 		defer wg.Done()
-		runHomeostaticWorker(ctx, router, brain, NewPID(1.5, 0.05, 0.2), 0, 0.005, 0.0001, 5.0, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
+		// T0 Worker: Aggressive Start at 30% Pressure
+		runHomeostaticWorker(ctx, router, brain, NewPID(1.5, 0.05, 0.2), 0, 0.005, 0.0001, 0.8, 1*time.Millisecond, 100*time.Millisecond, reportT0Lambda)
 	}()
 	go func() {
 		defer wg.Done()
@@ -251,47 +243,205 @@ func main() {
 		runHomeostaticWorker(ctx, router, nil, NewPID(0.2, 0.0, 0.0), 4, 0.001, 0.0001, 0.1, 1*time.Second, 30*time.Second, nil)
 	}()
 
-	// Monitoring (Background Task)
 	monCaps := make(map[string]float64)
 	for k, v := range caps {
 		monCaps[k] = float64(v)
 	}
 
-	// Wir feuern den Monitor einfach ab. Wenn main.go sich beendet (wg.Wait() der Worker ist fertig),
-	// wird dieser Background-Prozess automatisch vom OS gekillt. Keine WaitGroup hierfür!
 	go func() {
 		monitoring.StartMonitor(hotPool, monitoring.MonitorConfig{
 			Interval: 5 * time.Second, TargetPhi: PHI, CSVFile: "yafad_metrics.csv", Capacities: monCaps,
 		}, getT0Lambda)
 	}()
 
-	// --- NEU: PROMETHEUS METRICS SERVER ---
 	go func() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
-
-		// Starte den Server auf Port 2112.
-		// Wir ignorieren Fehler hier für den Moment, damit es den Main-Prozess nicht blockiert.
 		if err := http.ListenAndServe(":2112", nil); err != nil && err != http.ErrServerClosed {
 			slog.Error("Prometheus Server failed", "error", err)
 		}
 	}()
-	// --------------------------------------
 
-	// Injection
+	// INJECTION
 	if injectCount > 0 {
 		go func() {
 			time.Sleep(2 * time.Second)
-			cmd := exec.CommandContext(ctx, "go", "run", "generator.go", "-count", fmt.Sprintf("%d", injectCount), "-mode", "scenario")
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Run()
+
+			fmt.Println("🔨 Compiling Generator...")
+			buildCmd := exec.Command("go", "build", "-o", "yafad_sim", "generator.go")
+			if buildErr := buildCmd.Run(); buildErr != nil {
+				slog.Error("❌ FATAL: Failed to compile generator", "error", buildErr)
+				return
+			}
+			fmt.Println("✅ Generator compiled. Starting Robust Batch Injection...")
+
+			batchSize := 250000
+			remaining := injectCount
+			batchNum := 1
+			totalStart := time.Now()
+
+			for remaining > 0 {
+				currentBatch := batchSize
+				if remaining < batchSize {
+					currentBatch = remaining
+				}
+
+				fmt.Printf("\n🚀 [Batch %d] Injecting %d records... (Remaining: %d)\n", batchNum, currentBatch, remaining-currentBatch)
+
+				currentOffset := injectCount - remaining
+				batchCtx, batchCancel := context.WithTimeout(ctx, 15*time.Minute)
+
+				cmd := exec.CommandContext(batchCtx, "./yafad_sim",
+					"-count", fmt.Sprintf("%d", currentBatch),
+					"-mode", "scenario",
+					"-offset", fmt.Sprintf("%d", currentOffset))
+
+				logFile, _ := os.Create(fmt.Sprintf("batch_%d.log", batchNum))
+				cmd.Stdout = logFile
+				cmd.Stderr = logFile
+
+				err := cmd.Run()
+				logFile.Close()
+				batchCancel()
+
+				if ctx.Err() == context.DeadlineExceeded {
+					slog.Error("❌ BATCH TIMEOUT! Generator was hung and killed.", "batch", batchNum)
+					break
+				}
+
+				if err != nil {
+					slog.Error("❌ Batch failed (Crash/Error)!", "batch", batchNum, "error", err)
+					fmt.Printf("   -> Check 'batch_%d.log' for details.\n", batchNum)
+					break
+				}
+
+				remaining -= currentBatch
+				batchNum++
+
+				if remaining > 0 {
+					var t0C int
+					hotPool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&t0C)
+					t0Cap := float64(globalConfig.Capacities["table0"])
+					fillLevel := 0.0
+					if t0Cap > 0 {
+						fillLevel = float64(t0C) / t0Cap
+					}
+
+					// WAIT LOGIC: Only wait if T0 is actually getting full (>80%)
+					if fillLevel < 0.8 {
+						fmt.Printf("🌊 T0 Level %.1f%% (<80%%) - Skipping Wait to build pressure...\n", fillLevel*100)
+					} else {
+						waitForStabilization(ctx, hotPool, 0.1)
+					}
+				}
+			}
+
+			totalDuration := time.Since(totalStart)
+			realTotal := injectCount - remaining
+			avgSpeed := 0.0
+			if totalDuration.Seconds() > 0 {
+				avgSpeed = float64(realTotal) / totalDuration.Seconds()
+			}
+
+			report := fmt.Sprintf("\nDONE. Injected: %d in %v (Avg: %.0f ops/sec)\n",
+				realTotal, totalDuration, avgSpeed)
+			fmt.Print(report)
+			_ = os.WriteFile("time_taken.txt", []byte(report), 0644)
+
+			os.Remove("yafad_sim")
 		}()
 	}
 
-	// Wir warten NUR noch auf die 5 Worker.
 	wg.Wait()
 	fmt.Println("👋 YaFaD has successfully and safely shut down.")
+}
+
+// HIER IST DIE FEHLENDE FUNKTION:
+func saveConfigToJSON(config SystemConfig) {
+	file, _ := json.MarshalIndent(config, "", "  ")
+	_ = os.WriteFile(CONFIG_FILE, file, 0644)
+}
+
+func waitForStabilization(ctx context.Context, pool *pgxpool.Pool, targetDiff float64) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
+	fmt.Printf("⚖️  Stabilizing System (Waiting for Phi-Diff < %.2f)...\n", targetDiff)
+
+	for {
+		select {
+		case <-timeoutCtx.Done():
+			fmt.Println("\n⚠️  Stabilization Timeout (30m). Forcing next batch...")
+			return
+		case <-ticker.C:
+			diff := calculateCurrentPhiDiff(timeoutCtx, pool)
+			statusIcon := "⏳"
+			if diff < 0.2 {
+				statusIcon = "🤞"
+			}
+			// FIX 2: Println instead of \r
+			fmt.Printf("%s Waiting for homeostasis... Current Phi-Diff: %.4f\n", statusIcon, diff)
+			if diff < targetDiff {
+				fmt.Printf("✅ System Stabilized (Phi-Diff: %.4f). Proceeding...\n", diff)
+				return
+			}
+		}
+	}
+}
+
+func calculateCurrentPhiDiff(ctx context.Context, pool *pgxpool.Pool) float64 {
+	var counts []int
+	for i := 0; i < 5; i++ {
+		var c int
+		pool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM table%d", i)).Scan(&c)
+		counts = append(counts, c)
+	}
+
+	var totalDiff float64
+	var countRatios int
+
+	t0Capacity := float64(globalConfig.Capacities["table0"])
+	if t0Capacity > 0 {
+		t0Fill := float64(counts[0]) / t0Capacity
+		if t0Fill > 0.8 && counts[1] < 1000 {
+			// Stuck input buffer -> High Error
+			return 2.0
+		}
+	}
+
+	for i := 0; i < 4; i++ {
+		cCurrent := float64(counts[i])
+		cNext := float64(counts[i+1])
+
+		if cCurrent > 5000 {
+			if cNext < 100 {
+				totalDiff += 1.0
+				countRatios++
+				continue
+			}
+			capCurrent := float64(globalConfig.Capacities[fmt.Sprintf("table%d", i)])
+			capNext := float64(globalConfig.Capacities[fmt.Sprintf("table%d", i+1)])
+
+			if capCurrent > 0 && capNext > 0 {
+				fillCurrent := cCurrent / capCurrent
+				fillNext := cNext / capNext
+				diff := math.Abs(fillCurrent - fillNext)
+				totalDiff += diff
+				countRatios++
+			}
+		}
+	}
+
+	if countRatios == 0 {
+		if counts[0] == 0 {
+			return 0.0
+		}
+		return 0.5
+	}
+
+	return totalDiff / float64(countRatios)
 }
 
 func configWatcher(ctx context.Context) {
@@ -347,10 +497,8 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 		totalRecords = val
 	}
 
-	// --- RESSOURCE VERHANDLUNG (DER LOOP) ---
 	numCores := runtime.NumCPU()
-	cpuPercent := 50             // Default
-	baselineRpsPerCore := 2500.0 // Angenommene Basis-Verdauungs-Geschwindigkeit pro CPU-Kern
+	cpuPercent := 50
 
 	for {
 		fmt.Printf("\n💻 System Analysis: Detected %d CPU cores.\n", numCores)
@@ -367,32 +515,35 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 			}
 		}
 
-		// Kalkulation
 		effectiveCores := float64(numCores) * (float64(cpuPercent) / 100.0)
 		if effectiveCores < 0.5 {
 			effectiveCores = 0.5
-		} // Minimum
+		}
 
-		// Wir rechnen mit einem Multiplikator von 2.5, da Daten über mehrere Tiers (T0-T4) fließen müssen
-		digestionPenalty := 2.5
-		estimatedRps := baselineRpsPerCore * effectiveCores
-		estimatedSeconds := (float64(totalRecords) * digestionPenalty) / estimatedRps
-		estDuration := time.Duration(estimatedSeconds) * time.Second
+		realWorldSpeed := MeasureSystemPulse(ctx, pool)
+		fmt.Print("❓ Enter target max biomass (e.g., 100000): ")
+		var targetBiomass int
+		fmt.Scanln(&targetBiomass)
 
-		fmt.Println("\n📊 MIGRATION ESTIMATE:")
-		fmt.Printf("   ├─ Allocated Compute: %.1f Cores (%d%%)\n", effectiveCores, cpuPercent)
-		fmt.Printf("   ├─ Est. Digestion Speed: %.0f operations/sec\n", estimatedRps)
-		fmt.Printf("   └─ Time to Harmony: ~%v\n", estDuration.Round(time.Second))
+		complexityFactor := 27.0
+		sustainedSpeed := realWorldSpeed / complexityFactor
+		estimatedSeconds := float64(targetBiomass) / sustainedSpeed
+		estimatedDuration := time.Duration(estimatedSeconds) * time.Second
+
+		fmt.Printf("\n📊 PREDICTION (Real-World Complexity x%.0f):\n", complexityFactor)
+		fmt.Printf("   • Raw Burst Speed:     %.0f ops/sec (Sensor)\n", realWorldSpeed)
+		fmt.Printf("   • Est. Sustained Flow: ~%.0f items/sec (Homeostasis Mode)\n", sustainedSpeed)
+		fmt.Printf("   • Time to %d records: %s\n", targetBiomass, estimatedDuration)
+		fmt.Println("--------------------------------")
 
 		fmt.Print("\n❓ Accept this resource plan? (Y to accept / N to adjust): ")
 		confirm, _ := reader.ReadString('\n')
 		confirm = strings.ToLower(strings.TrimSpace(confirm))
 		if confirm == "" || strings.HasPrefix(confirm, "y") {
-			break // Verlassen des Loops -> Verhandlung erfolgreich!
+			break
 		}
 	}
 
-	// Architektur-Berechnung
 	targetVolume := float64(totalRecords) * ARCHITECTURE_HEADROOM
 	baseCap := int(targetVolume / PHI_SUM_FACTOR)
 	if baseCap < 1000 {
@@ -413,17 +564,11 @@ func runSetupWizard(ctx context.Context, pool *pgxpool.Pool) (map[string]int, in
 	return caps, totalRecords, cpuPercent
 }
 
-func saveConfigToJSON(config SystemConfig) {
-	file, _ := json.MarshalIndent(config, "", "  ")
-	_ = os.WriteFile(CONFIG_FILE, file, 0644)
-}
-
-// --- WORKER (With Context & Exponential Backoff) ---
 func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cortex.Cortex, pid *PIDController, startTier int, baseLambda, min, max float64, minSleep, maxSleep time.Duration, reportLambda func(float64)) {
 	currentLambda := baseLambda
 	threshold := 0.4
 	currentSleep := maxSleep
-	errorBackoff := 1 * time.Second // Start Backoff für DB Fehler
+	errorBackoff := 1 * time.Second
 
 	sourceTier := startTier
 	targetTier := startTier + 1
@@ -443,7 +588,6 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 	lastObservation := time.Now()
 
 	for {
-		// 1. Graceful Shutdown Check
 		select {
 		case <-ctx.Done():
 			slog.Info("Worker stopped gracefully.", "tier", sourceTable)
@@ -468,7 +612,6 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 		var sourceCount int
 		err := sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&sourceCount)
 
-		// 2. Exponential Backoff bei DB Verbindungsverlust
 		if err != nil {
 			slog.Warn("DB Error, applying backoff...", "tier", sourceTable, "err", err, "sleep", errorBackoff)
 			time.Sleep(errorBackoff)
@@ -476,9 +619,9 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 			if errorBackoff > 60*time.Second {
 				errorBackoff = 60 * time.Second
 			}
-			continue // Nächster Versuch
+			continue
 		} else {
-			errorBackoff = 1 * time.Second // Reset bei Erfolg
+			errorBackoff = 1 * time.Second
 		}
 
 		bellyFactor := 1.0
@@ -497,8 +640,11 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 
 		pressure := float64(sourceCount) / float64(idealCapacity)
 
-		buoyancyLimit := targetRatio * 0.90
-		if startTier <= 1 && pressure < buoyancyLimit {
+		// FIX 3: Turbo Charge for overflowing Tiers
+		// If pressure is > 100%, we override PID and force flow!
+		if pressure > 1.05 {
+			currentLambda = 0.5 // Force fast decay
+		} else if startTier <= 1 && pressure < (targetRatio*0.30) {
 			currentLambda = min
 		} else {
 			pidOutput := pid.Update(pressure, targetRatio)
@@ -571,7 +717,6 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 					}
 				}
 			} else {
-				// DB Read Fehler beim Fetch
 				slog.Warn("DB Read Error in Batch", "tier", sourceTable, "err", err)
 				time.Sleep(errorBackoff)
 			}
@@ -582,12 +727,10 @@ func runHomeostaticWorker(ctx context.Context, router *StorageRouter, brain *cor
 			}
 		}
 
-		// Letzter Check vorm Sleep (damit Shutdown schnell geht)
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(currentSleep):
-			// Weiter im Loop
 		}
 	}
 }
@@ -630,3 +773,36 @@ func migrateRecord(ctx context.Context, sP, tP *pgxpool.Pool, sT, tT, id, pl str
 }
 
 func randInt(min, max int) int { return min + rand.Intn(max-min+1) }
+
+// MeasureSystemPulse
+func MeasureSystemPulse(ctx context.Context, pool *pgxpool.Pool) float64 {
+	fmt.Print("   sensor: Calibrating storage I/O speed... ")
+
+	testBatchSize := 50
+	start := time.Now()
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		fmt.Printf("Error starting tx: %v\n", err)
+		return 1000.0
+	}
+	defer tx.Rollback(ctx)
+
+	sql := "INSERT INTO table0 (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4)"
+	dummyJSON := `{"type": "sensor_probe", "data": "calibration"}`
+
+	for i := 0; i < testBatchSize; i++ {
+		id := fmt.Sprintf("sensor_probe_%d", i)
+		_, err := tx.Exec(ctx, sql, id, dummyJSON, 1.0, time.Now())
+		if err != nil {
+			fmt.Printf("Write error: %v\n", err)
+			return 1000.0
+		}
+	}
+
+	duration := time.Since(start)
+	opsPerSecond := float64(testBatchSize) / duration.Seconds()
+
+	fmt.Printf("DONE. (%.0f ops/sec)\n", opsPerSecond)
+	return opsPerSecond
+}

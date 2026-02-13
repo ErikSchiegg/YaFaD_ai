@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Global sleep control for pacemaker
 var currentSleepMs int64 = 0
 
 // Config Struct
@@ -23,16 +24,21 @@ type SystemConfig struct {
 }
 
 func main() {
-	countPtr := flag.Int("count", 100000, "Total records to inject")
+	// 1. Flags definieren (VOR Parse!)
+	countPtr := flag.Int("count", 100000, "Total records to inject in this batch")
 	modePtr := flag.String("mode", "simple", "Mode: simple | scenario")
 	workersPtr := flag.Int("workers", 4, "Number of workers")
+	offsetPtr := flag.Int("offset", 0, "Global ID Start Offset (for batching)")
+
+	// 2. Parsen
 	flag.Parse()
 
 	totalRows := *countPtr
 	workers := *workersPtr
-	batchSize := 500
+	offset := *offsetPtr
+	batchSize := 500 // Rows per INSERT/COPY
 
-	// Config Load
+	// Config Load (Optional, for baseCap)
 	baseCap := 20000.0
 	data, err := os.ReadFile("yafad_config.json")
 	if err == nil {
@@ -44,9 +50,11 @@ func main() {
 		}
 	}
 
-	totalBatches := int(math.Ceil(float64(totalRows) / float64(batchSize)))
-	batchesPerWorker := int(math.Ceil(float64(totalBatches) / float64(workers)))
+	// Work distribution
+	rowsPerWorker := int(math.Ceil(float64(totalRows) / float64(workers)))
+	batchesPerWorker := int(math.Ceil(float64(rowsPerWorker) / float64(batchSize)))
 
+	// DB Connection
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -60,152 +68,149 @@ func main() {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("DB Connection failed: %v", err))
 	}
 	defer pool.Close()
 
-	estimatedDuration := time.Duration(totalRows/1500) * time.Second
-	if estimatedDuration < 10*time.Second {
-		estimatedDuration = 10 * time.Second
-	}
-
-	fmt.Printf("\n🌊 HYBRID GENERATOR v0.8.1 (Mode: %s)\n", *modePtr)
-	fmt.Printf("   Target: %d | Cap: %.0f\n", totalRows, baseCap)
+	fmt.Printf("\n🌊 HYBRID GENERATOR v0.8.2 (Mode: %s)\n", *modePtr)
+	fmt.Printf("   Target: %d | Offset: %d | Workers: %d\n", totalRows, offset, workers)
 
 	startTime := time.Now()
 
-	// --- PACEMAKER ---
-	go func() {
-		for {
-			elapsed := time.Since(startTime)
-
-			// SCENARIO LOGIC
-			progress := float64(elapsed) / float64(estimatedDuration)
-			isLull := false
-
-			if *modePtr == "scenario" {
-				// Wenn alle Daten drin sind, gehen wir in den "Aging Mode" (Die Dürre)
-				if progress > 1.2 {
-					isLull = true
+	// --- PACEMAKER (Flow Control) ---
+	// Nur im 'scenario' mode aktiv, sonst Vollgas
+	if *modePtr == "scenario" {
+		go func() {
+			for {
+				// Einfacher Pacemaker: Prüft Füllstand von T0
+				var t0Count int
+				err := pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&t0Count)
+				if err != nil {
+					time.Sleep(1 * time.Second)
+					continue
 				}
+
+				pressure := float64(t0Count) / baseCap
+
+				// Dynamische Drosselung
+				newSleep := int64(0)
+				if pressure > 0.9 {
+					newSleep = 100 // Leicht bremsen
+				}
+				if pressure > 1.1 {
+					newSleep = 1000 // Stark bremsen
+				}
+				if pressure > 1.5 {
+					newSleep = 5000 // Notbremse
+				}
+
+				atomic.StoreInt64(&currentSleepMs, newSleep)
+
+				statusIcon := "🟢"
+				if pressure > 0.95 {
+					statusIcon = "🟠"
+				}
+				if pressure > 1.1 {
+					statusIcon = "🔴"
+				}
+
+				// Status Line Update (Overwrites line)
+				fmt.Printf("\r%s Pressure: %3.0f%% | T0: %d | Throttle: %dms    ",
+					statusIcon, pressure*100, t0Count, newSleep)
+
+				time.Sleep(500 * time.Millisecond)
 			}
-
-			if isLull {
-				// LULL PHASE: 0 Injection
-				atomic.StoreInt64(&currentSleepMs, 5000) // Sleep long
-				fmt.Printf("\r💤 LULL PHASE (Aging...) | Time: %.0fs      ", elapsed.Seconds())
-				time.Sleep(1 * time.Second)
-				continue
-			}
-
-			// NORMAL PHASE (Sine/Sigmoid)
-			if progress > 1.0 {
-				progress = 1.0
-			}
-
-			sineFactor := 0.5 * (1.0 + math.Cos(progress*math.Pi))
-
-			var t0Count int
-			pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&t0Count)
-			pressure := float64(t0Count) / baseCap
-
-			k := 15.0
-			target := 0.95
-			sigmoidFactor := 1.0 / (1.0 + math.Exp(k*(pressure-target)))
-
-			combinedFactor := sineFactor * sigmoidFactor
-			baseDelay := 2000.0 * (1.0 - combinedFactor)
-			newSleep := int64(baseDelay)
-
-			if newSleep > 3000 {
-				newSleep = 3000
-			}
-			if pressure > 1.20 {
-				newSleep = 5000
-			}
-
-			atomic.StoreInt64(&currentSleepMs, newSleep)
-
-			statusIcon := "🟢"
-			if pressure > 0.95 {
-				statusIcon = "🟠"
-			}
-			if pressure > 1.05 {
-				statusIcon = "🔴"
-			}
-			if pressure > 2.00 {
-				statusIcon = "💥"
-			}
-
-			fmt.Printf("\r%s P: %3.0f%% | Sea: %.2f Damp: %.2f | Delay: %4dms | Row: %d    ",
-				statusIcon, pressure*100, sineFactor, sigmoidFactor, newSleep, t0Count)
-
-			time.Sleep(100 * time.Millisecond)
-		}
-	}()
+		}()
+	}
 
 	// --- WORKERS ---
 	var wg sync.WaitGroup
 	wg.Add(workers)
+
+	// Globaler Counter für den Abschlussbericht
 	var ops int64 = 0
 
-	for i := 0; i < workers; i++ {
-		go func(id int) {
+	for w := 0; w < workers; w++ {
+		go func(workerID int) {
 			defer wg.Done()
+
+			// Jeder Worker berechnet seinen eigenen ID-Bereich
+			// Worker 0: Offset + 0 .. Offset + N
+			// Worker 1: Offset + N .. Offset + 2N
+			workerOffset := offset + (workerID * rowsPerWorker)
+
+			processedInWorker := 0
+
 			for b := 0; b < batchesPerWorker; b++ {
-				// Check Pause
+				// 1. Pacemaker Check
 				for {
 					delay := atomic.LoadInt64(&currentSleepMs)
-					if delay >= 5000 {
-						// Lull Mode -> Worker Pause
-						time.Sleep(1 * time.Second)
-						continue
-					}
 					if delay > 0 {
 						time.Sleep(time.Duration(delay) * time.Millisecond)
+					}
+					// Wenn Delay riesig ist (Notbremse), warten wir länger
+					if delay >= 5000 {
+						time.Sleep(1 * time.Second)
+						continue
 					}
 					break
 				}
 
-				currentRows := [][]interface{}{}
-				for j := 0; j < batchSize; j++ {
-					jsonPayload := fmt.Sprintf(`{"content": "v0.8.1-data", "w": %d}`, id)
-					currentRows = append(currentRows, []interface{}{
-						fmt.Sprintf("gen-%d-%d-%d", id, time.Now().UnixNano(), j),
-						jsonPayload,
-						1.0,
-						time.Now(),
+				// 2. Batch zusammenbauen
+				// Wir berechnen die IDs deterministisch:
+				// ID = WorkerStart + (BatchIndex * BatchSize) + RowIndex
+				batchStartID := workerOffset + (b * batchSize)
+
+				// Sicherheit: Nicht mehr generieren als zugeteilt
+				currentBatchSize := batchSize
+				if processedInWorker+currentBatchSize > rowsPerWorker {
+					currentBatchSize = rowsPerWorker - processedInWorker
+				}
+				if currentBatchSize <= 0 {
+					break // Worker ist fertig
+				}
+
+				rows := [][]interface{}{}
+				for j := 0; j < currentBatchSize; j++ {
+					// Deterministische ID
+					globalID := batchStartID + j
+					idString := fmt.Sprintf("user_%d", globalID)
+
+					// JSON Payload
+					jsonPayload := fmt.Sprintf(`{"type": "synthetic", "batch": %d, "worker": %d}`, b, workerID)
+
+					rows = append(rows, []interface{}{
+						idString,    // id
+						jsonPayload, // payload
+						1.0,         // utility_index
+						time.Now(),  // last_activity
 					})
 				}
 
+				// 3. COPY into DB
 				_, errCopy := pool.CopyFrom(
 					ctx,
 					pgx.Identifier{"table0"},
 					[]string{"id", "payload", "utility_index", "last_activity"},
-					pgx.CopyFromRows(currentRows),
+					pgx.CopyFromRows(rows),
 				)
 
 				if errCopy == nil {
-					atomic.AddInt64(&ops, int64(batchSize))
+					atomic.AddInt64(&ops, int64(currentBatchSize))
+					processedInWorker += currentBatchSize
 				} else {
-					time.Sleep(1 * time.Second)
+					// Bei Fehler warten und Retry (einfachster Fall: Loggen und weiter)
+					// fmt.Printf("Error inserting: %v\n", errCopy)
+					time.Sleep(500 * time.Millisecond)
 				}
 			}
-		}(i)
+		}(w)
 	}
+
 	wg.Wait()
 
-	// Nach Abschluss der Injection: Wenn Scenario an ist, warten wir noch für Aging
-	if *modePtr == "scenario" {
-		fmt.Printf("\n\n🛑 INJECTION DONE. Entering AGING PHASE (Ctrl+C to stop)...\n")
-		// Wir lassen den Generator laufen, damit das Terminal nicht sofort schließt,
-		// während main.go im Hintergrund weiter aufräumt.
-		for {
-			time.Sleep(10 * time.Second)
-		}
-	}
-
+	// Abschluss
 	dur := time.Since(startTime)
 	rps := float64(atomic.LoadInt64(&ops)) / dur.Seconds()
-	fmt.Printf("\n\n🏁 DONE. Injected: %d | RPS: %.0f\n", atomic.LoadInt64(&ops), rps)
+	fmt.Printf("\n\n🏁 BATCH DONE. Injected: %d | RPS: %.0f\n", atomic.LoadInt64(&ops), rps)
 }

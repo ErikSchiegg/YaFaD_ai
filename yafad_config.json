@@ -10,7 +10,7 @@
   "sniffer_active": true,
   "vanish_threshold": "10m",
   "limits": {
-    "max_cpu_percent": 60
+    "max_cpu_percent": 50
   },
-  "last_updated": "2026-02-12T05:37:32.47442224+01:00"
+  "last_updated": "2026-02-12T19:57:18.765249362+01:00"
 }
