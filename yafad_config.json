@@ -1,7 +1,7 @@
 {
   "run_state": "RUNNING",
   "inject_total": 15000000,
-  "inject_done": 810000,
+  "inject_done": 1060000,
   "t0_hard_limit": 350000,
   "capacities": {
     "table0": 350000,

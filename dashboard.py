@@ -171,8 +171,8 @@ def get_status_text():
     return f"**State:** {icon} {state} | **Progress:** {pct:.1f}% | **Mode:** {limit_text}"
 
 # --- UI LAYOUT ---
-with gr.Blocks(title="YaFaD v0.9.1 Mission Control", theme=gr.themes.Monochrome()) as app:
-    gr.Markdown("# 🦁 YaFaD v0.9.1 Mission Control")
+with gr.Blocks(title="YaFaD v0.9.0 Mission Control", theme=gr.themes.Monochrome()) as app:
+    gr.Markdown("# 🦁 YaFaD v0.9.0 Mission Control")
     
     init_conf = get_current_config()
     current_grafana = init_conf.get("grafana_url", DEFAULT_GRAFANA)

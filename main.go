@@ -263,7 +263,7 @@ func main() {
 	}()
 
 	// --- MAIN EVENT LOOP ---
-	fmt.Println("🦁 YaFaD Online. Waiting for Mission Command via Dashboard...")
+	fmt.Println("🦁 YaFaD v0.9.0 Online. Waiting for Mission Command via Dashboard...")
 
 	startMonitoringService(hotPool)
 	go launchDashboard()
