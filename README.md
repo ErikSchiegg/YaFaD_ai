@@ -4,23 +4,34 @@
 
 ---
 
-## 🚀 What's New in v0.8.0: "The Time Traveler & The Oracle"
+# 🚀 What's New in v0.9.0: "The Living Lung & The Industrial Titan"
+We have crossed the threshold from "prototype" to production-grade phenomenon. v0.9.0 isn't just an update; it's a metamorphosis. We pushed YaFaD to the limit with a 4-million-record stress test, and it didn't just survive—it thrived. The system now "breathes" data, respects physical hardware limits, and offers a Mission Control interface that puts you in the pilot's seat of a living organism.
 
-We’ve reached a massive milestone! YaFaD has evolved from a reactive script into a fully autonomous, predictive, and self-managing biological organism. Stress-tested with millions of records, v0.8.0 introduces true intelligence and dynamic scaling.
+## 🔥 Epic New Features
+### 🫁 Pulse Injection (The Living Lung):
+YaFaD has evolved a respiratory system. We’ve replaced linear loading with a biological Sawtooth Strategy. The system now "inhales" data into T0 until it hits a configurable High Watermark (e.g., 150%), pauses to let gravity do its work ("exhale" to 120%), and then resumes. This prevents "Brick Wall" memory crashes and allows for theoretically infinite ingestion without clogging the arteries.
 
-### 🔥 Epic New Features
+### 🏗️ Hardware-First Architecture:
+Theoretical math is great, but expensive DDR5 RAM is real. v0.9.0 introduces T0 Hard Limits. You can now define the exact physical capacity of your hot tier (e.g., "50k records in RAM"). YaFaD creates a perfect Golden Ratio pyramid downwards from that hardware constraint, ensuring your server never swaps or crashes, no matter how massive the total dataset is.
 
-* 🧠 **Pre-Cognition Engine (ML Cortex):** YaFaD is no longer just reactive—it's clairvoyant. The Rust-backed Cortex now uses a trained Linear Regression model ($R^2 = 0.96$) to predict T0 pressure spikes **30 seconds into the future**. If a data tsunami is detected, the brain proactively boosts `Lambda` before the bottleneck even occurs. 
-* 📐 **Autonomous Golden Geometry:** Say goodbye to manual tuning! The new Setup Wizard uses the "Archimedes Constant" to auto-calculate the perfect capacity for all tiers (T0-T4). Give it an expected data volume, and YaFaD builds a mathematically perfect pyramid with a built-in 1.2x safety headroom. T0 always runs at a relaxed ~100%.
-* 🔭 **Production Auto-Scout:** In Production mode, YaFaD acts as a scout. It connects to your source database, scans the actual table size (e.g., `user_posts`), and dynamically shape-shifts its own architecture to perfectly digest that specific table.
-* 🎬 **Scenario Mode & Accelerated Aging:** Testing the "Deep Archive" is now a breeze. The generator features a new `-mode scenario` flag that simulates natural data lifecycles: **Act 1 (The Flood)** injects data, followed by **Act 2 (The Lull)** where the system rests. Combined with a new, hot-reloadable `VanishThreshold` (e.g., `10m`), you can watch YaFaD flush cold data into the Deep Archive at warp speed.
+### 🎛️ Mission Control v2 (Haptic Feedback):
+The Gradio dashboard has been completely overhauled. It now features a Live RAM Calculator that warns you of peak memory usage before you launch. You get real-time controls to tune the Physics (Buoyancy), adjust PID values on the fly, and dynamically shift the High/Low Watermarks while the engine is running. It feels less like a script and more like a cockpit.
 
-**The Result:** A rock-solid, homeostatic database engine that breathes in data waves, digests them smoothly through its tiers, and permanently archives the cold "biomass"—all without breaking a sweat or needing manual intervention. Here shown in the Grafana integration for some eye candy:
+### 📉 proven Stability at Scale:
+We threw 4,000,000 records at it. The result? A perfectly stacked biomass distribution. T4 (Cold Storage) carried the heavy load (1.5M+), while T0 (Hot) floated effortlessly on top, maintaining a Phi Deviation of <0.4. The "Deep Archive" gatekeeper successfully filtered the dead data, proving that YaFaD is ready for enterprise-level workloads.
+
+## The Result:
+A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
 
 <p align="center">
-  <img src="assets/Grafana_integration.png" alt="YaFaD Equilibrium Graph" width="100%">
+  <img src="assets/Grafana_integration1.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
-
+<p align="center">
+  <img src="assets/Grafana_integration2.png" alt="YaFaD Equilibrium Graph" width="100%">
+</p>
+<p align="center">
+  <img src="assets/Grafana_integration3.png" alt="YaFaD Equilibrium Graph" width="100%">
+</p>
 
 # 🗺️ YaFaD Evolution Roadmap
 
