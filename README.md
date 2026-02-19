@@ -23,12 +23,103 @@ We threw 4,000,000 records at it. The result? A perfectly stacked biomass distri
 ## The Result:
 A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
 
-### In the ressource saving, runs everywhere Vim terminal interface:
+---
+## In the ressource saving, runs everywhere 🦁 Synapse TUI (Command Terminal)
+
+Synapse is a high-performance, "Bubble Tea" powered terminal interface for monitoring and controlling the YaFaD core engine. It allows for keyboard-only interaction, perfect for SSH sessions or tiling window managers.
+
+### ⚡ Start Procedure Synapse TUI (Command Terminal)
+
+**1. Ignite the Core Engine** (Essential!)
+Open a terminal and start the database core. This process generates the live telemetry.
+
+```bash
+go run main.go
+```
+
+**2. Launch Synapse**
+Open a second terminal window and launch the commander interface.
+
+```bash
+go run synapse.go
+```
+
 <p align="center">
   <img src="assets/Vim_interface.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
 
-### In the full scale full comfort Gradio/Grafana interface:
+### 🔧 Troubleshooting
+**"SIGNAL LOST" / Waiting for Core**
+
+* Synapse reads telemetry from ```yafad_metrics.csv```. If ```main.go``` is not running, Synapse will display stale data or a waiting message.
+
+* Fix: Ensure go run ```main.go``` is running in a separate terminal.
+
+**Display Glitches**
+
+* Ensure you use a modern terminal (Fish, Alacritty, iTerm2, Windows Terminal).
+
+* Resize your terminal window to at least ~80 characters width.
+
+```S``` **Start Mission:** Opens the Wizard to configure and ignite the engine.<br>
+```X``` **Stop Mission:** Triggers an emergency stop (requires confirmation).<br>
+```R``` **Refresh:** Force a UI refresh (Auto-refresh is active by default).<br>
+```Q``` **Quit:** Exits the Synapse TUI (Engine continues running).<br>
+```Esc``` **Back/Cancel:** Returns to dashboard from Wizard or cancels action.
+
+---
+## In the full scale full comfort Gradio/Grafana interface:
+
+### 🚀 Mission Control (Web Dashboard)
+
+The Mission Control interface provides a visual cockpit for tuning PID parameters on the fly, managing database migrations, and viewing deep historical trends via Grafana.
+
+### 🛠️ Prerequisites
+
+* **Anaconda / Miniconda** (Recommended for environment isolation)
+* **Grafana** (Running on `localhost:3000` for chart integration)
+
+### ⚡ Start Procedure
+
+**1. Ignite the Core Engine** (Essential!)
+The dashboard controls the engine via configuration files. The engine must be running to react to your commands.
+```bash
+go run main.go
+```
+
+**2. Launch the Dashboard**
+Open a second terminal. We use a helper script to launch the dashboard inside the correct Python environment.
+```bash
+# Make script executable (Linux/Mac)
+chmod +x start_dashboard.sh
+
+# Run it
+./start_dashboard.sh
+```
+
+**3. Access the Interface**
+Open your web browser and navigate to:
+👉 http://localhost:7888
+
+**📊 Grafana Integration**
+The dashboard embeds Grafana via an iframe.
+
+* Default URL: http://localhost:3000/d/yafad-main.
+
+* You can change the target URL dynamically in the ⚙️ Settings tab.
+
+**💡 The "Full Stack" Workspace**
+For the complete operations experience, run the components in three separate terminal windows:
+
+1. Terminal A: ```go run main.go``` (The Engine)
+
+2. Terminal B: ```go run synapse.go``` (The Commander)
+
+3. Terminal C: ```./start_dashboard.sh``` (The Visuals)
+
+---
+**Result:**
+
 <p align="center">
   <img src="assets/Grafana_integration1.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
