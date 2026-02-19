@@ -1,165 +1,98 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"os"
-	"strings"
-	"sync"
+
+	_ "github.com/lib/pq"
 )
 
-// --- CONFIG ---
-type ProxyConfig struct {
-	ListenPort string `json:"listen_port"`
-	TargetHost string `json:"target_host"`
-	TargetPort string `json:"target_port"`
-	BioFilter  struct {
-		Inorganic []string `json:"inorganic_ignored"`
-		Organic   []string `json:"organic_managed"`
-	} `json:"bio_filter"`
+// Config Struktur für die JSON Policy
+type MigrationConfig struct {
+	Mode      string   `json:"mode"`
+	LegacyDB  DBConfig `json:"legacy_db"`
+	Whitelist []string `json:"yafad_whitelist"` // Tabellen, die YaFaD gehören
 }
 
-var config ProxyConfig
+type DBConfig struct {
+	Host     string `json:"host"`
+	Port     string `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	DBName   string `json:"dbname"`
+}
 
-func main() {
-	// 1. Load Config
-	data, err := os.ReadFile("yafad_proxy.json")
+type Proxy struct {
+	Config     MigrationConfig
+	LegacyConn *sql.DB
+	YaFaDConn  *sql.DB // Verbindung zum internen YaFaD (oder direkt Funktionsaufruf)
+}
+
+func NewProxy() *Proxy {
+	// 1. Lade Config
+	file, err := os.ReadFile("migration_policy.json")
 	if err != nil {
-		log.Fatalf("❌ Could not load config: %v", err)
+		log.Println("⚠️ No migration policy found. Defaulting to Standalone Mode.")
+		return &Proxy{}
 	}
-	json.Unmarshal(data, &config)
 
-	// 2. Start Listener
-	listener, err := net.Listen("tcp", ":"+config.ListenPort)
+	var cfg MigrationConfig
+	json.Unmarshal(file, &cfg)
+
+	// 2. Verbinde zur Legacy DB
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		cfg.LegacyDB.Host, cfg.LegacyDB.Port, cfg.LegacyDB.User, cfg.LegacyDB.Password, cfg.LegacyDB.DBName)
+
+	legacyDb, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatalf("❌ Failed to listen on port %s: %v", config.ListenPort, err)
+		log.Printf("❌ Failed to connect to Legacy DB: %v", err)
+	} else {
+		fmt.Println("🔌 Connected to Legacy System.")
 	}
 
-	fmt.Println("╔══════════════════════════════════════════════════╗")
-	fmt.Printf("║ 🛡️  YaFaD BIO-PROXY ACTIVE on Port %s          ║\n", config.ListenPort)
-	fmt.Printf("║ 🎯 Target: %s:%s                     ║\n", config.TargetHost, config.TargetPort)
-	fmt.Println("╚══════════════════════════════════════════════════╝")
-	fmt.Printf("Running Bio-Filter on: %v\n", config.BioFilter.Organic)
-
-	for {
-		clientConn, err := listener.Accept()
-		if err != nil {
-			log.Printf("Connection error: %v", err)
-			continue
-		}
-		go handleConnection(clientConn)
+	return &Proxy{
+		Config:     cfg,
+		LegacyConn: legacyDb,
 	}
 }
 
-func handleConnection(clientConn net.Conn) {
-	// Connect to Real DB
-	targetAddr := config.TargetHost + ":" + config.TargetPort
-	dbConn, err := net.Dial("tcp", targetAddr)
-	if err != nil {
-		log.Printf("❌ Could not connect to DB: %v", err)
-		clientConn.Close()
-		return
-	}
+// RouteQuery entscheidet: Wer bekommt die Anfrage?
+// Dies ist eine vereinfachte Router-Logik.
+func (p *Proxy) HandleRequest(table string, operation string, data string) {
+	target := "LEGACY"
 
-	// Bidirectional Pipes
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Pipe 1: App -> DB (Hier sitzt der Sniffer!)
-	go func() {
-		defer wg.Done()
-		sniffAndCopy(clientConn, dbConn, true)
-	}()
-
-	// Pipe 2: DB -> App (Antworten interessieren uns gerade nicht so sehr)
-	go func() {
-		defer wg.Done()
-		sniffAndCopy(dbConn, clientConn, false)
-	}()
-
-	wg.Wait()
-}
-
-// Der Herzschlag des Proxies
-func sniffAndCopy(src, dst net.Conn, isUpstream bool) {
-	defer src.Close()
-	defer dst.Close()
-
-	buffer := make([]byte, 4096)
-	for {
-		n, err := src.Read(buffer)
-		if err != nil {
-			if err != io.EOF {
-				// Connection reset etc.
-			}
-			return
-		}
-
-		// --- THE SNIFFER ---
-		if isUpstream {
-			// Wir kopieren die Daten für die Analyse, damit wir den Fluss nicht blockieren
-			payload := make([]byte, n)
-			copy(payload, buffer[:n])
-
-			// Analyse läuft asynchron (Non-Blocking IO)
-			go analyzeTraffic(payload)
-		}
-		// -------------------
-
-		_, err = dst.Write(buffer[:n])
-		if err != nil {
-			return
-		}
-	}
-}
-
-func analyzeTraffic(data []byte) {
-	// Postgres Wire Protocol ist binär, aber SQL Queries stehen oft im Klartext drin.
-	// Für diesen Prototyp scannen wir einfach den String.
-	// In Production würde man einen echten PG-Parser nehmen.
-
-	content := string(data)
-	contentLower := strings.ToLower(content)
-
-	// Filter 1: Ist es ein SELECT?
-	if !strings.Contains(contentLower, "select") {
-		return
-	}
-
-	// Filter 2: Bio-Check
-	// Wir suchen nach Tabellennamen
-	detectedOrganic := false
-	detectedTable := ""
-
-	// Check Inorganic (Ignore)
-	for _, table := range config.BioFilter.Inorganic {
-		if strings.Contains(contentLower, table) {
-			// Es ist eine statische Tabelle (z.B. User Login). Ignorieren.
-			return
-		}
-	}
-
-	// Check Organic (Signal)
-	for _, table := range config.BioFilter.Organic {
-		if strings.Contains(contentLower, table) {
-			detectedOrganic = true
-			detectedTable = table
+	// Check Whitelist (Strangler Pattern)
+	for _, t := range p.Config.Whitelist {
+		if t == table {
+			target = "YAFAD"
 			break
 		}
 	}
 
-	if detectedOrganic {
-		// --- PHEROMONE SIGNAL ---
-		// Hier würde der Proxy normalerweise per UDP an den Core senden:
-		// "RESET UTILITY FOR ID X IN TABLE Y"
-
-		// Wir simulieren das Loggen und Extrahieren einer ID (Mock)
-		fmt.Printf("\r⚡ \033[1;36mSNIFFER:\033[0m Detected access on organic tissue [\033[1;32m%s\033[0m] -> Injecting Pheromone (Reset U=1.0)   ", detectedTable)
-
-		// Simuliere kurze Verzögerung für "Core Contact"
-		// In Realität: Fire & Forget UDP Packet
+	if target == "YAFAD" {
+		p.routeToYaFaD(table, operation, data)
+	} else {
+		p.routeToLegacy(table, operation, data)
 	}
+}
+
+func (p *Proxy) routeToYaFaD(table string, op string, data string) {
+	// Hier würde der Aufruf an den YaFaD Core (Cortex) gehen
+	// Z.B. via Channel oder Funktionsaufruf in main.go
+	fmt.Printf("🦁 [PROXY -> YAFAD] Handling '%s' on table '%s' (Optimized Storage)\n", op, table)
+	// Code to inject into YaFaD ingest loop...
+}
+
+func (p *Proxy) routeToLegacy(table string, op string, data string) {
+	if p.LegacyConn == nil {
+		fmt.Println("❌ Error: Legacy DB not connected.")
+		return
+	}
+	fmt.Printf("👵 [PROXY -> LEGACY] Passthrough '%s' on table '%s'\n", op, table)
+
+	// Realer SQL Durchstich zur alten DB
+	// _, err := p.LegacyConn.Exec("INSERT INTO ...", ...)
 }
