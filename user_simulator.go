@@ -209,3 +209,36 @@ func simulateAccess(ctx context.Context, db *sql.DB) {
 	query := fmt.Sprintf("UPDATE %s SET utility_index = 1.0, last_activity = NOW() WHERE id IN (SELECT id FROM %s LIMIT 1)", tableName, tableName)
 	db.ExecContext(ctx, query)
 }
+
+// Simuliert Traffic einer alten Applikation, der durch den Proxy läuft
+func SimulateLegacyAppTraffic() {
+	fmt.Println("\n🤖 --- STARTING USER SIMULATION (Legacy App Traffic) ---")
+
+	// 1. Proxy initialisieren (Liest migration_policy.json)
+	// HINWEIS: NewProxy() kommt aus yafad_proxy.go.
+	// Damit das funktioniert, müssen beide Dateien zusammen gestartet werden.
+	proxy := NewProxy()
+
+	// Simulierte Tabellen einer typischen App
+	tables := []string{"users", "orders", "audit_logs", "sensor_data", "inventory"}
+	ops := []string{"INSERT", "UPDATE", "SELECT"}
+
+	fmt.Println("🚦 Traffic Generator active. Press Ctrl+C to stop.")
+
+	// Endlosschleife
+	for {
+		// Zufallsauswahl
+		targetTable := tables[rand.Intn(len(tables))]
+		operation := ops[rand.Intn(len(ops))]
+
+		// Simulierter Daten-Payload
+		payload := fmt.Sprintf("User-%d data payload", rand.Intn(1000))
+
+		// Der entscheidende Aufruf: Die App spricht mit dem Proxy!
+		// Der Proxy entscheidet dann: Legacy DB oder YaFaD?
+		proxy.HandleRequest(targetTable, operation, payload)
+
+		// Random Delay (50ms - 500ms) für Realismus
+		time.Sleep(time.Duration(rand.Intn(450)+50) * time.Millisecond)
+	}
+}

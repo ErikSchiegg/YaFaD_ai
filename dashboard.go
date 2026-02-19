@@ -1,164 +1,186 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
-	"runtime"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// --- CONFIG ---
+// Konfiguration für das Konsolen-Dashboard
 const (
-	RefreshRate = 1 * time.Second
-	ConfigFile  = "yafad_config.json"
+	HUD_REFRESH_RATE = 2 * time.Second
+	METRICS_FILE     = "yafad_metrics.csv"
+	BAR_WIDTH        = 20
 )
 
-// Struktur muss exakt zum JSON passen, das main.go schreibt
-type SystemConfig struct {
-	Capacities    map[string]int `json:"capacities"`
-	TargetRatio   float64        `json:"target_ratio"`
-	SnifferActive bool           `json:"sniffer_active"`
-	LastUpdated   time.Time      `json:"last_updated"`
-}
+// ANSI Colors für Colab
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorPurple = "\033[35m"
+	ColorCyan   = "\033[36m"
+	ColorWhite  = "\033[37m"
+	ColorBold   = "\033[1m"
+)
 
-// Fallback Defaults
-var Capacities = map[string]int{
-	"table0": 20000,
-	"table1": 32360,
-	"table2": 52360,
-	"table3": 84720,
-	"table4": 137080,
-}
-var TargetRatio = 1.0
+// StartLegacyDashboard startet die Überwachung in einer Goroutine
+func StartLegacyDashboard() {
+	fmt.Println("🖥️  Tactical Dashboard active. Monitoring metrics...")
 
-func main() {
-	// DB Connection
-	dbUser := os.Getenv("DB_USER")
-	if dbUser == "" {
-		dbUser = "eriks"
-	}
-	dbPass := os.Getenv("DB_PASSWORD")
-	if dbPass == "" {
-		dbPass = "test"
-	}
-	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
+	// Wir warten kurz, bis die Engine CSV-Dateien angelegt hat
+	time.Sleep(3 * time.Second)
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, connStr)
-	if err != nil {
-		panic(fmt.Sprintf("❌ DB Connect failed: %v", err))
-	}
-	defer pool.Close()
-
-	// Loop
 	for {
-		loadConfig() // Hot-Reload bei jedem Tick
-		clearScreen()
-		renderDashboard(ctx, pool)
-		time.Sleep(RefreshRate)
+		printHUD()
+		time.Sleep(HUD_REFRESH_RATE)
 	}
 }
 
-func loadConfig() {
-	data, err := os.ReadFile(ConfigFile)
-	if err == nil {
-		var conf SystemConfig
-		// Hier war der Fehler: Wir müssen in das Struct unmarshallen
-		if json.Unmarshal(data, &conf) == nil {
-			if len(conf.Capacities) > 0 {
-				Capacities = conf.Capacities
-			}
-			if conf.TargetRatio > 0 {
-				TargetRatio = conf.TargetRatio
-			}
+func printHUD() {
+	// 1. Letzte Zeile aus CSV lesen
+	record, err := readLastLine(METRICS_FILE)
+	if err != nil {
+		// Noch keine Daten, wir warten leise
+		return
+	}
+
+	// CSV Struktur Annahme:
+	// timestamp, runtime, biomass, t0, t1, t2, t3, t4, deep, t0_pct, ...
+	if len(record) < 10 {
+		return
+	}
+
+	// Daten parsen (Fehler ignorieren wir für den Speed, setzen auf 0)
+	biomass, _ := strconv.ParseInt(record[2], 10, 64)
+	t0, _ := strconv.ParseInt(record[3], 10, 64)
+	t1, _ := strconv.ParseInt(record[4], 10, 64)
+	deep, _ := strconv.ParseInt(record[8], 10, 64)
+	t0_pct, _ := strconv.ParseFloat(record[9], 64)
+
+	// Runtime formatieren
+	runtimeSec, _ := strconv.ParseInt(record[1], 10, 64)
+	uptime := fmt.Sprintf("%02d:%02d", runtimeSec/60, runtimeSec%60)
+
+	// 2. RENDERING THE HUD
+	// Wir nutzen fmt.Printf für einen sauberen Block.
+	// In Colab können wir den Screen nicht gut clearen, also drucken wir kompakte Blöcke.
+
+	statusColor := ColorGreen
+	statusIcon := "🟢 ONLINE"
+	if t0_pct > 100 {
+		statusColor = ColorRed
+		statusIcon = "🔥 OVERLOAD"
+	} else if t0_pct > 80 {
+		statusColor = ColorYellow
+		statusIcon = "⚠️  PRESSURE"
+	}
+
+	fmt.Println("\n" + strings.Repeat("━", 50))
+	fmt.Printf(" %s🦁 YaFaD ENGINE v0.9.0  |  UPTIME: %s  |  %s%s%s\n", ColorBold, uptime, statusColor, statusIcon, ColorReset)
+	fmt.Println(strings.Repeat("━", 50))
+
+	// Stats Row 1
+	fmt.Printf(" %sTOTAL BIOMASS:%s    %s%s%s records\n", ColorCyan, ColorReset, ColorBold, formatInt(biomass), ColorReset)
+
+	// Stats Row 2 (T0 Bar)
+	fmt.Printf(" %sCORTEX (T0):%s      %s %s (%s)\n", ColorBlue, ColorReset, drawBar(t0_pct, 120), fmt.Sprintf("%.1f%%", t0_pct), formatInt(t0))
+
+	// Stats Row 3 (Detail Layers)
+	fmt.Printf(" %sL1 (Dream):%s       %s\n", ColorPurple, ColorReset, formatInt(t1))
+	fmt.Printf(" %sDEEP ARCHIVE:%s     %s\n", ColorWhite, ColorReset, formatInt(deep))
+
+	// Footer
+	fmt.Println(strings.Repeat("─", 50))
+}
+
+// Hilfsfunktion: Zeichnet einen ASCII Ladebalken
+func drawBar(pct float64, maxPct float64) string {
+	normalized := pct / maxPct
+	if normalized > 1.0 {
+		normalized = 1.0
+	}
+	filledLen := int(normalized * float64(BAR_WIDTH))
+
+	bar := "["
+	color := ColorGreen
+
+	if pct > 80 {
+		color = ColorYellow
+	}
+	if pct > 100 {
+		color = ColorRed
+	}
+
+	for i := 0; i < BAR_WIDTH; i++ {
+		if i < filledLen {
+			bar += color + "█" + ColorReset
+		} else {
+			bar += "░"
+		}
+	}
+	bar += "]"
+	return bar
+}
+
+// Hilfsfunktion: Zahlen formatieren (1.000.000)
+func formatInt(n int64) string {
+	in := strconv.FormatInt(n, 10)
+	numOfDigits := len(in)
+	if n < 0 {
+		numOfDigits-- // Handle negative numbers
+	}
+	numOfCommas := (numOfDigits - 1) / 3
+
+	out := make([]byte, len(in)+numOfCommas)
+	if n < 0 {
+		in, out[0] = in[1:], '-'
+	}
+
+	for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+		out[j] = in[i]
+		if i == 0 {
+			return string(out)
+		}
+		if k++; k == 3 {
+			j, k = j-1, 0
+			out[j] = ','
 		}
 	}
 }
 
-func renderDashboard(ctx context.Context, pool *pgxpool.Pool) {
-	var t0, t1, t2, t3, t4, archive int
+// Liest die allerletzte Zeile einer Datei effizient
+func readLastLine(filepath string) ([]string, error) {
+	file, err := os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-	pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&t0)
-	pool.QueryRow(ctx, "SELECT count(*) FROM table1").Scan(&t1)
-	pool.QueryRow(ctx, "SELECT count(*) FROM table2").Scan(&t2)
-	pool.QueryRow(ctx, "SELECT count(*) FROM table3").Scan(&t3)
-	pool.QueryRow(ctx, "SELECT count(*) FROM table4").Scan(&t4)
-	pool.QueryRow(ctx, "SELECT count(*) FROM deep_archive").Scan(&archive)
+	// Wir lesen einfach die Datei. Bei riesigen Files wäre Seek besser,
+	// aber metrics.csv wird in Colab Sessions selten >10MB.
+	reader := csv.NewReader(file)
+	var lastRecord []string
 
-	total := t0 + t1 + t2 + t3 + t4
-	baseCap := Capacities["table0"]
-
-	fmt.Println(strings.Repeat("=", 65))
-	fmt.Printf("📊 YaFaD Monitor v0.6.7 (Real Cap: %d | Target: %.2f)\n", baseCap, TargetRatio)
-	fmt.Printf("   Total Biomass: %d records\n", total)
-	fmt.Println(strings.Repeat("=", 65))
-	fmt.Printf("%-8s | %-9s | %-9s | %-7s | %s\n", "Tier", "Current", "Ideal Cap", "Fill %", "Status")
-	fmt.Println(strings.Repeat("-", 65))
-
-	printRow("table0", t0)
-	printRow("table1", t1)
-	printRow("table2", t2)
-	printRow("table3", t3)
-	printRow("table4", t4)
-
-	fmt.Println(strings.Repeat("-", 65))
-	fmt.Printf("📦 Deep Archive: %d records \033[1;36m(Infinite Cold Storage)\033[0m\n", archive)
-	fmt.Println(strings.Repeat("=", 65))
-}
-
-func printRow(name string, count int) {
-	cap := Capacities[name]
-	if cap == 0 {
-		cap = 1
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			continue
+		}
+		lastRecord = record
 	}
 
-	// Echte Füllstandsberechnung
-	pct := float64(count) / float64(cap) * 100.0
-
-	// Status-Logik: Berücksichtigt jetzt das TargetRatio!
-	// Wenn Target 1.5 ist, ist 150% "Normal" (Grün).
-	normalizedPct := pct / TargetRatio
-
-	status := ""
-	color := "\033[0m"
-
-	if normalizedPct > 120.0 {
-		status = "🔴 OVERFLOW"
-		color = "\033[1;31m"
-	} else if normalizedPct > 105.0 {
-		status = "🟠 High Load"
-		color = "\033[1;33m"
-	} else if count == 0 {
-		status = "⚪ EMPTY"
-		color = "\033[1;30m"
-	} else {
-		status = "🟢 OPTIMAL"
-		color = "\033[1;32m"
+	if lastRecord == nil {
+		return nil, io.EOF
 	}
-
-	barLen := 10
-	filledLen := int(normalizedPct / 100.0 * float64(barLen))
-	if filledLen > barLen {
-		filledLen = barLen
-	}
-	bar := "[" + strings.Repeat("#", filledLen) + strings.Repeat(".", barLen-filledLen) + "]"
-
-	fmt.Printf("%s%-8s | %-9d | %-9d | %6.1f%% | %s %s\033[0m\n",
-		color, name, count, cap, pct, bar, status)
-}
-
-func clearScreen() {
-	if runtime.GOOS == "windows" {
-		cmd := exec.Command("cmd", "/c", "cls")
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-	} else {
-		fmt.Print("\033[H\033[2J")
-	}
+	return lastRecord, nil
 }
