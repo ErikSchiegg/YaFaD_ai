@@ -23,6 +23,12 @@ We threw 4,000,000 records at it. The result? A perfectly stacked biomass distri
 ## The Result:
 A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
 
+### In the ressource saving, runs everywhere Vim terminal interface:
+<p align="center">
+  <img src="assets/Vim_interface.png" alt="YaFaD Equilibrium Graph" width="100%">
+</p>
+
+### In the full scale full comfort Gradio/Grafana interface:
 <p align="center">
   <img src="assets/Grafana_integration1.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
