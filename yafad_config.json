@@ -1,10 +1,10 @@
 {
   "run_state": "RUNNING",
   "inject_total": 5000000,
-  "inject_done": 1110000,
-  "t0_hard_limit": 200000,
+  "inject_done": 1910000,
+  "t0_hard_limit": 250000,
   "capacities": {
-    "table0": 350000,
+    "table0": 250000,
     "table1": 566311,
     "table2": 916311,
     "table3": 1482623,
@@ -12,10 +12,10 @@
   },
   "target_ratio": 1,
   "flush_on_start": false,
-  "buoyancy_factor": 0.7,
+  "buoyancy_factor": 0.85,
   "watermarks": {
-    "high": 140,
-    "low": 106
+    "high": 150,
+    "low": 110
   },
   "sniffer_active": true,
   "vanish_threshold": "20m",
@@ -27,5 +27,5 @@
   "limits": {
     "max_cpu_percent": 75
   },
-  "last_updated": "2026-02-19T00:54:08Z"
+  "last_updated": "2026-02-19T22:13:57Z"
 }

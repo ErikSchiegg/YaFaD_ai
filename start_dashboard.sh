@@ -12,4 +12,4 @@ if ! conda info --envs | grep -q "yafad"; then
 fi
 
 # Startet das Dashboard direkt in der yafad-Umgebung
-conda run -n yafad python dashboard.py
+conda run --no-capture-output -n yafad python dashboard.py
