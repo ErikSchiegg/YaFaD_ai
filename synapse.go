@@ -15,7 +15,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// --- KONFIGURATION & THEME ---
 const (
 	METRICS_FILE = "yafad_metrics.csv"
 	CONFIG_FILE  = "yafad_config.json"
@@ -29,20 +28,17 @@ const YAFAD_LOGO = ` __  __     ______     ______   ______     _____        ____
 \/_____/   \/_/\/_/   \/_/     \/_/\/_/   \/____/      \/_/\/_/   \/_/`
 
 var (
-	// Palette
-	colRam = lipgloss.Color("#F72585") // Hot Pink
-	// UPDATED: Helleres Lila für bessere Lesbarkeit
-	colDream  = lipgloss.Color("#BD93F9") // Bright Neon Purple (Dracula Theme style)
-	colCache  = lipgloss.Color("#4CC9F0") // Neon Blue
-	colCold   = lipgloss.Color("#4895EF") // Blue
-	colText   = lipgloss.Color("#E0E0E0") // Whiteish
+	colRam    = lipgloss.Color("#F72585")
+	colDream  = lipgloss.Color("#BD93F9")
+	colCache  = lipgloss.Color("#4CC9F0")
+	colCold   = lipgloss.Color("#4895EF")
+	colText   = lipgloss.Color("#E0E0E0")
 	colGray   = lipgloss.Color("#3A3A3A")
 	colGreen  = lipgloss.Color("#43BF6D")
 	colWarn   = lipgloss.Color("#F5A623")
 	colDanger = lipgloss.Color("#D0021B")
 	colInput  = lipgloss.Color("#FFFF00")
 
-	// Styles
 	appStyle = lipgloss.NewStyle().Margin(1, 1)
 
 	panelStyle = lipgloss.NewStyle().
@@ -55,7 +51,6 @@ var (
 	statValueStyle = lipgloss.NewStyle().Foreground(colText).Bold(true)
 )
 
-// --- STATES ---
 type sessionState int
 
 const (
@@ -68,9 +63,16 @@ const (
 	stateToggleReset
 	stateConfirm
 	stateAbortConfirm
+	stateTuneT0
+	stateTuneKp
+	stateTuneKi
+	stateTuneKd
+	stateTuneBuoy
+	stateTuneWHigh
+	stateTuneWLow
+	stateTuneConfirm
 )
 
-// --- MODEL ---
 type model struct {
 	metrics   MetricsData
 	config    ConfigData
@@ -79,7 +81,6 @@ type model struct {
 	state     sessionState
 	textInput textinput.Model
 
-	// Wizard Data
 	wizRecords string
 	wizT0      string
 	wizCPU     string
@@ -87,26 +88,42 @@ type model struct {
 	wizFlush   bool
 	wizReset   bool
 
+	wizTuneT0    string
+	wizTuneKp    string
+	wizTuneKi    string
+	wizTuneKd    string
+	wizTuneBuoy  string
+	wizTuneWHigh string
+	wizTuneWLow  string
+
 	cmdStatus string
 	cmdColor  lipgloss.Color
 }
 
 type MetricsData struct {
-	Runtime string
-	Biomass string
-	T0_Raw  int64
-	T0_Pct  float64
-	T1, T2  string
-	T3, T4  string
-	Deep    string
+	Runtime     string
+	Biomass     string
+	Biomass_Raw int64
+	T0_Raw      int64
+	T0_Pct      float64
+	T1, T2      string
+	T3, T4      string
+	Deep        string
 }
 
 type ConfigData struct {
-	RunState    string  `json:"run_state"`
-	InjectTotal int     `json:"inject_total"`
-	T0Limit     int     `json:"t0_hard_limit"`
-	CPU         int     `json:"max_cpu_percent"`
-	TargetRatio float64 `json:"target_ratio"`
+	RunState    string
+	InjectTotal int
+	InjectDone  int
+	T0Limit     int
+	CPU         int
+	TargetRatio float64
+	Kp          float64
+	Ki          float64
+	Kd          float64
+	Buoyancy    float64
+	WHigh       float64
+	WLow        float64
 }
 
 func initialModel() model {
@@ -127,7 +144,6 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(tickCmd(), textinput.Blink)
 }
 
-// --- UPDATE ---
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
@@ -135,24 +151,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		key := msg.String()
-
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
 
-		// --- DASHBOARD MODE ---
 		if m.state == stateDashboard {
 			switch key {
 			case "q", "ctrl+q":
 				return m, tea.Quit
 			case "r", "ctrl+r":
 				return m, tickCmd()
-
-			// STOP TRIGGER (Zur Sicherheit)
 			case "x":
 				m.state = stateAbortConfirm
 				return m, nil
-
+			case "t":
+				_ = m.loadTuneDefaults()
+				m.state = stateTuneT0
+				m.textInput.SetValue(m.wizTuneT0)
+				m.textInput.Focus()
+				return m, nil
 			case "s":
 				_ = m.loadConfigDefaults()
 				m.state = stateInputRecords
@@ -161,39 +178,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		} else {
-			// --- WIZARD / DIALOG MODES ---
-
-			// ABORT CONFIRMATION LOGIC
 			if m.state == stateAbortConfirm {
 				switch key {
 				case "y", "Y", "enter":
-					// WIRKLICH STOPPEN
 					_ = sendStopSignal()
 					m.cmdStatus = "🛑 MISSION ABORTED"
 					m.cmdColor = colDanger
 					m.state = stateDashboard
 				case "n", "N", "esc":
-					// ZURÜCK
 					m.state = stateDashboard
 					m.cmdStatus = "🛡️ ABORT CANCELLED"
 					m.cmdColor = colGreen
 				}
 				return m, nil
 			}
-
-			// Wizard Escape
-			switch key {
-			case "esc":
+			if key == "esc" {
 				m.state = stateDashboard
 				m.cmdStatus = "❌ CANCELLED"
 				m.cmdColor = colWarn
 				return m, nil
 			}
 
-			// Text Input Handling
-			if m.state >= stateInputRecords && m.state <= stateInputRatio {
-				switch key {
-				case "enter":
+			isTextInputState := m.state >= stateInputRecords && m.state <= stateInputRatio || m.state >= stateTuneT0 && m.state <= stateTuneWLow
+			if isTextInputState {
+				if key == "enter" {
 					switch m.state {
 					case stateInputRecords:
 						m.wizRecords = m.textInput.Value()
@@ -210,6 +218,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case stateInputRatio:
 						m.wizRatio = m.textInput.Value()
 						m.state = stateToggleFlush
+					case stateTuneT0:
+						m.wizTuneT0 = m.textInput.Value()
+						m.state = stateTuneKp
+						m.textInput.SetValue(m.wizTuneKp)
+					case stateTuneKp:
+						m.wizTuneKp = m.textInput.Value()
+						m.state = stateTuneKi
+						m.textInput.SetValue(m.wizTuneKi)
+					case stateTuneKi:
+						m.wizTuneKi = m.textInput.Value()
+						m.state = stateTuneKd
+						m.textInput.SetValue(m.wizTuneKd)
+					case stateTuneKd:
+						m.wizTuneKd = m.textInput.Value()
+						m.state = stateTuneBuoy
+						m.textInput.SetValue(m.wizTuneBuoy)
+					case stateTuneBuoy:
+						m.wizTuneBuoy = m.textInput.Value()
+						m.state = stateTuneWHigh
+						m.textInput.SetValue(m.wizTuneWHigh)
+					case stateTuneWHigh:
+						m.wizTuneWHigh = m.textInput.Value()
+						m.state = stateTuneWLow
+						m.textInput.SetValue(m.wizTuneWLow)
+					case stateTuneWLow:
+						m.wizTuneWLow = m.textInput.Value()
+						m.state = stateTuneConfirm
 					}
 					return m, nil
 				}
@@ -217,7 +252,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-			// Boolean Toggles
 			if m.state == stateToggleFlush || m.state == stateToggleReset {
 				switch key {
 				case "y", "Y":
@@ -240,22 +274,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Start Confirmation
-			if m.state == stateConfirm {
-				switch key {
-				case "y", "Y", "enter":
-					err := sendStartSignal(m)
+			if m.state == stateConfirm || m.state == stateTuneConfirm {
+				if key == "y" || key == "Y" || key == "enter" {
+					var err error
+					if m.state == stateConfirm {
+						err = sendStartSignal(m)
+						m.cmdStatus = "🚀 MISSION STARTED"
+					} else {
+						err = sendTuneSignal(m)
+						m.cmdStatus = "🎛️ PHYSICS UPDATED"
+					}
+
 					if err != nil {
 						m.cmdStatus = "❌ ERROR: " + err.Error()
 						m.cmdColor = colDanger
 					} else {
-						m.cmdStatus = "🚀 MISSION STARTED"
 						m.cmdColor = colGreen
 					}
 					m.state = stateDashboard
-				case "n", "N":
+				} else if key == "n" || key == "N" {
 					m.state = stateDashboard
-					m.cmdStatus = "❌ START ABORTED"
+					m.cmdStatus = "❌ ABORTED"
 					m.cmdColor = colWarn
 				}
 				return m, nil
@@ -267,12 +306,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ticks%20 == 0 {
 			m.cmdStatus = ""
 		}
+
 		metrics, err := readMetrics()
 		if err == nil {
 			m.metrics = metrics
+			m.err = nil // <--- DER WICHTIGE BUGFIX: Löst den Lock
 		} else {
 			m.err = err
 		}
+
 		conf, _ := readConfigQuick()
 		m.config = conf
 		return m, tickCmd()
@@ -280,8 +322,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, nil
 }
-
-// --- HELPER: IO ---
 
 func (m *model) loadConfigDefaults() error {
 	c, err := readConfigQuick()
@@ -309,6 +349,21 @@ func (m *model) loadConfigDefaults() error {
 	return nil
 }
 
+func (m *model) loadTuneDefaults() error {
+	c, err := readConfigQuick()
+	if err != nil {
+		return err
+	}
+	m.wizTuneT0 = strconv.Itoa(c.T0Limit)
+	m.wizTuneKp = fmt.Sprintf("%.2f", c.Kp)
+	m.wizTuneKi = fmt.Sprintf("%.3f", c.Ki)
+	m.wizTuneKd = fmt.Sprintf("%.2f", c.Kd)
+	m.wizTuneBuoy = fmt.Sprintf("%.2f", c.Buoyancy)
+	m.wizTuneWHigh = fmt.Sprintf("%.1f", c.WHigh)
+	m.wizTuneWLow = fmt.Sprintf("%.1f", c.WLow)
+	return nil
+}
+
 func readConfigQuick() (ConfigData, error) {
 	f, err := os.ReadFile(CONFIG_FILE)
 	if err != nil {
@@ -316,12 +371,17 @@ func readConfigQuick() (ConfigData, error) {
 	}
 	var raw map[string]interface{}
 	json.Unmarshal(f, &raw)
-	c := ConfigData{}
+
+	c := ConfigData{Kp: 1.5, Ki: 0.05, Kd: 0.2, Buoyancy: 0.7, WHigh: 150.0, WLow: 120.0}
+
 	if v, ok := raw["run_state"].(string); ok {
 		c.RunState = v
 	}
 	if v, ok := raw["inject_total"].(float64); ok {
 		c.InjectTotal = int(v)
+	}
+	if v, ok := raw["inject_done"].(float64); ok {
+		c.InjectDone = int(v)
 	}
 	if v, ok := raw["t0_hard_limit"].(float64); ok {
 		c.T0Limit = int(v)
@@ -329,9 +389,32 @@ func readConfigQuick() (ConfigData, error) {
 	if v, ok := raw["target_ratio"].(float64); ok {
 		c.TargetRatio = v
 	}
+
 	if limits, ok := raw["limits"].(map[string]interface{}); ok {
 		if cpu, ok := limits["max_cpu_percent"].(float64); ok {
 			c.CPU = int(cpu)
+		}
+	}
+	if pidSettings, ok := raw["pid_settings"].(map[string]interface{}); ok {
+		if kp, ok := pidSettings["kp"].(float64); ok {
+			c.Kp = kp
+		}
+		if ki, ok := pidSettings["ki"].(float64); ok {
+			c.Ki = ki
+		}
+		if kd, ok := pidSettings["kd"].(float64); ok {
+			c.Kd = kd
+		}
+	}
+	if b, ok := raw["buoyancy_factor"].(float64); ok {
+		c.Buoyancy = b
+	}
+	if watermarks, ok := raw["watermarks"].(map[string]interface{}); ok {
+		if wh, ok := watermarks["high"].(float64); ok {
+			c.WHigh = wh
+		}
+		if wl, ok := watermarks["low"].(float64); ok {
+			c.WLow = wl
 		}
 	}
 	return c, nil
@@ -357,6 +440,35 @@ func sendStartSignal(m model) error {
 	return os.WriteFile(CONFIG_FILE, data, 0644)
 }
 
+func sendTuneSignal(m model) error {
+	file, _ := os.ReadFile(CONFIG_FILE)
+	var config map[string]interface{}
+	json.Unmarshal(file, &config)
+	t0, _ := strconv.Atoi(m.wizTuneT0)
+	config["t0_hard_limit"] = t0
+	kp, _ := strconv.ParseFloat(m.wizTuneKp, 64)
+	ki, _ := strconv.ParseFloat(m.wizTuneKi, 64)
+	kd, _ := strconv.ParseFloat(m.wizTuneKd, 64)
+
+	if _, ok := config["pid_settings"]; !ok {
+		config["pid_settings"] = map[string]interface{}{}
+	}
+	pid := config["pid_settings"].(map[string]interface{})
+	pid["kp"], pid["ki"], pid["kd"] = kp, ki, kd
+	b, _ := strconv.ParseFloat(m.wizTuneBuoy, 64)
+	config["buoyancy_factor"] = b
+
+	if _, ok := config["watermarks"]; !ok {
+		config["watermarks"] = map[string]interface{}{}
+	}
+	wm := config["watermarks"].(map[string]interface{})
+	wh, _ := strconv.ParseFloat(m.wizTuneWHigh, 64)
+	wl, _ := strconv.ParseFloat(m.wizTuneWLow, 64)
+	wm["high"], wm["low"] = wh, wl
+	data, _ := json.MarshalIndent(config, "", "  ")
+	return os.WriteFile(CONFIG_FILE, data, 0644)
+}
+
 func sendStopSignal() error {
 	file, _ := os.ReadFile(CONFIG_FILE)
 	var config map[string]interface{}
@@ -366,18 +478,14 @@ func sendStopSignal() error {
 	return os.WriteFile(CONFIG_FILE, data, 0644)
 }
 
-// --- VIEW ---
 func (m model) View() string {
-	// WIZARD / OVERLAY HANDLING
 	if m.state != stateDashboard {
 		return m.viewWizard()
 	}
-
 	if m.err != nil {
 		return fmt.Sprintf("\n ❌ SIGNAL LOST: %v\n Waiting for YaFaD Core...\n", m.err)
 	}
 
-	// HEADER
 	heartbeat := "●"
 	if m.ticks%2 == 0 {
 		heartbeat = "○"
@@ -392,19 +500,24 @@ func (m model) View() string {
 		statusColor = colDanger
 	}
 
+	targetAbs := m.metrics.Biomass_Raw + int64(m.config.InjectTotal) - int64(m.config.InjectDone)
+
 	headerLeft := lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("RUNTIME"), statValueStyle.Render(m.metrics.Runtime)),
 		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("SYSTEM"), statValueStyle.Foreground(colGreen).Render(heartbeat+" ONLINE")),
+		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("PID (Kp)"), statValueStyle.Render(fmt.Sprintf("%.2f", m.config.Kp))),
 	)
+
 	headerRight := lipgloss.JoinVertical(lipgloss.Left,
 		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("BIOMASS"), statValueStyle.Render(m.metrics.Biomass)),
 		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("STATUS"), statValueStyle.Foreground(statusColor).Render(statusText)),
+		lipgloss.JoinHorizontal(lipgloss.Left, statLabelStyle.Render("TARGET"), statValueStyle.Render(formatInt(targetAbs))),
 	)
+
 	headerBox := panelStyle.Copy().BorderForeground(statusColor).Render(
 		lipgloss.JoinHorizontal(lipgloss.Center, lipgloss.NewStyle().Width(37).Render(headerLeft), lipgloss.NewStyle().Width(37).Render(headerRight)),
 	)
 
-	// CORTEX (T0) - UPDATED: RED COUNT NEXT TO TITLE
 	t0Color := colGreen
 	if m.metrics.T0_Pct > 80 {
 		t0Color = colWarn
@@ -412,113 +525,87 @@ func (m model) View() string {
 	if m.metrics.T0_Pct > 100 {
 		t0Color = colDanger
 	}
-
 	t0Bar := progressBar(m.metrics.T0_Pct, 60, t0Color)
+	ramMB := (float64(m.metrics.T0_Raw) * 2048.0) / (1024.0 * 1024.0)
+	maxRamMB := (float64(m.config.T0Limit) * 2048.0) / (1024.0 * 1024.0)
+	t0Stats := fmt.Sprintf("RAM: %.1f MB / %.1f MB | PRESSURE: %.1f%%", ramMB, maxRamMB, m.metrics.T0_Pct)
 
-	// Stats (Bottom)
-	ramBytes := float64(m.metrics.T0_Raw) * 2048.0
-	ramMB := ramBytes / (1024.0 * 1024.0)
-	t0Stats := fmt.Sprintf("RAM: %.1f MB | PRESSURE: %.1f%%", ramMB, m.metrics.T0_Pct)
-
-	// Header mit Roter Zahl
+	t0Values := fmt.Sprintf("%s / %s", formatInt(m.metrics.T0_Raw), formatInt(int64(m.config.T0Limit)))
 	t0Header := lipgloss.JoinHorizontal(lipgloss.Left,
 		lipgloss.NewStyle().Foreground(t0Color).Bold(true).Render("🧠 CORTEX (T0)"),
-		lipgloss.NewStyle().Foreground(colDanger).Bold(true).MarginLeft(2).Render(formatInt(m.metrics.T0_Raw)), // <-- HIER IST DIE ROTE ZAHL
+		lipgloss.NewStyle().Foreground(t0Color).Bold(true).MarginLeft(2).Render(t0Values),
 	)
 
-	cortexPanel := panelStyle.Copy().BorderForeground(t0Color).Render(
-		lipgloss.JoinVertical(lipgloss.Left,
-			t0Header,
-			t0Bar,
-			lipgloss.NewStyle().Foreground(colGray).Render(t0Stats),
-		),
-	)
+	cortexPanel := panelStyle.Copy().BorderForeground(t0Color).Render(lipgloss.JoinVertical(lipgloss.Left, t0Header, t0Bar, lipgloss.NewStyle().Foreground(colGray).Render(t0Stats)))
 
-	// FRACTAL - ColDream ist jetzt heller
 	l1 := renderMiniBlock("T1 (Dream)", m.metrics.T1, colDream)
 	l2 := renderMiniBlock("T2 (Dream)", m.metrics.T2, colDream)
 	l3 := renderMiniBlock("T3 (Fade)", m.metrics.T3, colCache)
 	l4 := renderMiniBlock("T4 (Fade)", m.metrics.T4, colCache)
-	fractalPanel := panelStyle.Copy().BorderForeground(colDream).Render(
-		lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colDream).Bold(true).Render("🕸️ FRACTAL DECAY LAYERS"), lipgloss.JoinHorizontal(lipgloss.Top, l1, l2), lipgloss.JoinHorizontal(lipgloss.Top, l3, l4)),
-	)
+	fractalPanel := panelStyle.Copy().BorderForeground(colDream).Render(lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colDream).Bold(true).Render("🕸️ FRACTAL DECAY LAYERS"), lipgloss.JoinHorizontal(lipgloss.Top, l1, l2), lipgloss.JoinHorizontal(lipgloss.Top, l3, l4)))
 
-	// DEEP
-	deepPanel := panelStyle.Copy().BorderForeground(colCold).Render(
-		lipgloss.JoinHorizontal(lipgloss.Left, lipgloss.NewStyle().Foreground(colCold).Bold(true).Width(20).Render("💾 DEEP ARCHIVE"), statValueStyle.Render(m.metrics.Deep+" records secured")),
-	)
+	deepPanel := panelStyle.Copy().BorderForeground(colCold).Render(lipgloss.JoinHorizontal(lipgloss.Left, lipgloss.NewStyle().Foreground(colCold).Bold(true).Width(20).Render("💾 DEEP ARCHIVE"), statValueStyle.Render(m.metrics.Deep+" records secured")))
 
-	// STATUS
-	styledKeys := lipgloss.NewStyle().Foreground(colGray).Render("[S] Start Mission | [X] Stop | [Q] Quit")
+	styledKeys := lipgloss.NewStyle().Foreground(colGray).Render("[S] Start | [T] Tune | [X] Stop | [Q] Quit")
 	statusLine := styledKeys
 	if m.cmdStatus != "" {
 		statusLine = lipgloss.JoinHorizontal(lipgloss.Left, styledKeys, "   ", lipgloss.NewStyle().Foreground(m.cmdColor).Bold(true).Render(m.cmdStatus))
 	}
 
-	ui := lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Width(78).Align(lipgloss.Center).Foreground(colGreen).Bold(true).MarginBottom(1).Render(YAFAD_LOGO),
-		headerBox, cortexPanel, fractalPanel, deepPanel, lipgloss.NewStyle().MarginTop(1).Render(statusLine),
-	)
+	ui := lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Width(78).Align(lipgloss.Center).Foreground(colGreen).Bold(true).MarginBottom(1).Render(YAFAD_LOGO), headerBox, cortexPanel, fractalPanel, deepPanel, lipgloss.NewStyle().MarginTop(1).Render(statusLine))
 	return appStyle.Render(ui)
 }
 
 func (m model) viewWizard() string {
-
-	// FIX: Prioritize Abort Confirm to prevent "Yellow Frame" bug
 	if m.state == stateAbortConfirm {
-		title := "⚠️  EMERGENCY STOP  ⚠️"
-		prompt := "ABORT MISSION?   [Y] Yes   /   [N] No"
-		box := panelStyle.Copy().BorderForeground(colDanger).Padding(1, 2).Render(
-			lipgloss.JoinVertical(lipgloss.Center,
-				lipgloss.NewStyle().Foreground(colDanger).Bold(true).Blink(true).Render(title),
-				lipgloss.NewStyle().Foreground(colText).MarginTop(1).Render(prompt),
-			),
-		)
-		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n\n", box))
+		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n\n", panelStyle.Copy().BorderForeground(colDanger).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colDanger).Bold(true).Blink(true).Render("⚠️  EMERGENCY STOP  ⚠️"), lipgloss.NewStyle().Foreground(colText).MarginTop(1).Render("ABORT MISSION?   [Y] Yes   /   [N] No")))))
 	}
 
-	// Normal Wizard Logic
 	var title, prompt string
 	switch m.state {
 	case stateInputRecords:
-		title = "SET TARGET RECORDS (Total Biomass)"
-		prompt = "Records:"
+		title, prompt = "SET INJECTION AMOUNT (New Records)", "Records:"
 	case stateInputT0:
-		title = "SET T0 CAPACITY (Cortex Limit)"
-		prompt = "T0 Size:"
+		title, prompt = "SET T0 CAPACITY (Cortex Limit)", "T0 Size:"
 	case stateInputCPU:
-		title = "SET CPU THROTTLE (Percent)"
-		prompt = "Max CPU %:"
+		title, prompt = "SET CPU THROTTLE (Percent)", "Max CPU %:"
 	case stateInputRatio:
-		title = "SET FRACTAL RATIO (Phi Target)"
-		prompt = "Ratio:"
+		title, prompt = "SET FRACTAL RATIO (Phi Target)", "Ratio:"
 	case stateToggleFlush:
-		title = "FLUSH TABLES? (Empty DB on start)"
-		prompt = "[Y] Yes  /  [N] No"
+		title, prompt = "FLUSH TABLES? (Empty DB on start)", "[Y] Yes  /  [N] No"
 	case stateToggleReset:
-		title = "RESET COUNTER? (Start Progress at 0)"
-		prompt = "[Y] Yes  /  [N] No"
+		title, prompt = "RESET COUNTER? (Start Progress at 0)", "[Y] Yes  /  [N] No"
+	case stateTuneT0:
+		title, prompt = "🎛️ TUNE: T0 Capacity (Hard Limit)", "T0 Limit:"
+	case stateTuneKp:
+		title, prompt = "🎛️ TUNE: PID Kp (Proportional)", "Kp Value:"
+	case stateTuneKi:
+		title, prompt = "🎛️ TUNE: PID Ki (Integral)", "Ki Value:"
+	case stateTuneKd:
+		title, prompt = "🎛️ TUNE: PID Kd (Derivative)", "Kd Value:"
+	case stateTuneBuoy:
+		title, prompt = "🎛️ TUNE: Buoyancy Factor", "Buoyancy:"
+	case stateTuneWHigh:
+		title, prompt = "🎛️ TUNE: High Watermark (%)", "High Mark:"
+	case stateTuneWLow:
+		title, prompt = "🎛️ TUNE: Low Watermark (%)", "Low Mark:"
 	case stateConfirm:
-		summary := fmt.Sprintf(
-			"Please Confirm Launch Parameters:\n\n • Target Records: %s\n • T0 Capacity:    %s\n • CPU Limit:      %s%%\n • Fractal Ratio:  %s\n • Flush Tables:   %v\n • Reset Counter:  %v\n\nPRESS [ENTER] TO IGNITE  or  [ESC] TO CANCEL",
-			m.wizRecords, m.wizT0, m.wizCPU, m.wizRatio, m.wizFlush, m.wizReset,
-		)
-		box := panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render("🚀 MISSION CONFIGURATION"), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(summary)))
-		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n", box))
+		summary := fmt.Sprintf("Please Confirm Launch Parameters:\n\n • Inject Amount:  %s\n • T0 Capacity:    %s\n • CPU Limit:      %s%%\n • Fractal Ratio:  %s\n • Flush Tables:   %v\n • Reset Counter:  %v\n\nPRESS [ENTER] TO IGNITE  or  [ESC] TO CANCEL", m.wizRecords, m.wizT0, m.wizCPU, m.wizRatio, m.wizFlush, m.wizReset)
+		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n", panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render("🚀 MISSION CONFIGURATION"), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(summary)))))
+	case stateTuneConfirm:
+		summary := fmt.Sprintf("Confirm Physics Update:\n\n • T0 Limit:  %s\n • PID (Kp):  %s\n • PID (Ki):  %s\n • PID (Kd):  %s\n • Buoyancy:  %s\n • High Mark: %s%%\n • Low Mark:  %s%%\n\nPRESS [ENTER] TO APPLY  or  [ESC] TO CANCEL", m.wizTuneT0, m.wizTuneKp, m.wizTuneKi, m.wizTuneKd, m.wizTuneBuoy, m.wizTuneWHigh, m.wizTuneWLow)
+		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n", panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render("⚙️ APPLY TUNING"), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(summary)))))
 	}
 
-	if m.state <= stateInputRatio {
-		box := panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(
-			lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render(title), lipgloss.NewStyle().Foreground(colText).MarginTop(1).Render(prompt), m.textInput.View(), lipgloss.NewStyle().Foreground(colGray).MarginTop(1).Render("Press [Enter] to Next, [Esc] to Cancel")),
-		)
+	isTextInputState := m.state >= stateInputRecords && m.state <= stateInputRatio || m.state >= stateTuneT0 && m.state <= stateTuneWLow
+	if isTextInputState {
+		box := panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render(title), lipgloss.NewStyle().Foreground(colText).MarginTop(1).Render(prompt), m.textInput.View(), lipgloss.NewStyle().Foreground(colGray).MarginTop(1).Render("Press [Enter] to Next, [Esc] to Cancel")))
 		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n\n", box))
 	}
-
 	box := panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render(title), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(prompt)))
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n\n", box))
 }
 
-// --- HELPER METRICS ---
 func progressBar(pct float64, width int, c lipgloss.Color) string {
 	pct = pct / 100.0
 	if pct > 1.0 {
@@ -566,6 +653,7 @@ func readMetrics() (MetricsData, error) {
 	}
 	defer f.Close()
 	reader := csv.NewReader(f)
+	reader.FieldsPerRecord = -1 // <--- FIX für unvollständige Zeilen während des Schreibens
 	var last []string
 	for {
 		rec, err := reader.Read()
@@ -582,8 +670,9 @@ func readMetrics() (MetricsData, error) {
 	rt_sec, _ := strconv.ParseInt(last[1], 10, 64)
 	t0, _ := strconv.ParseInt(last[3], 10, 64)
 	t0_pct, _ := strconv.ParseFloat(last[9], 64)
+	bm_raw := mustInt(last[2])
 	return MetricsData{
-		Runtime: fmt.Sprintf("%02d:%02d", rt_sec/60, rt_sec%60), Biomass: formatInt(mustInt(last[2])), T0_Raw: t0, T0_Pct: t0_pct,
+		Runtime: fmt.Sprintf("%02d:%02d", rt_sec/60, rt_sec%60), Biomass: formatInt(bm_raw), Biomass_Raw: bm_raw, T0_Raw: t0, T0_Pct: t0_pct,
 		T1: formatInt(mustInt(last[4])), T2: formatInt(mustInt(last[5])), T3: formatInt(mustInt(last[6])), T4: formatInt(mustInt(last[7])), Deep: formatInt(mustInt(last[8])),
 	}, nil
 }

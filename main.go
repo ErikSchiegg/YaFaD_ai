@@ -42,7 +42,6 @@ type PIDConfig struct {
 	Kd float64 `json:"kd"`
 }
 
-// NEU: Konfiguration für den Pulse-Mode
 type WatermarkConfig struct {
 	High float64 `json:"high"`
 	Low  float64 `json:"low"`
@@ -145,19 +144,123 @@ func (r *StorageRouter) GetPool(tier int) *pgxpool.Pool {
 	return r.HotPool
 }
 
+// --- NEW: DYNAMIC BIOMASS AND WATERMARK LOGIC ---
+
+// getEstimatedBiomass fragt in <1ms die interne Statistik von PostgreSQL ab, anstatt Millionen Zeilen zu zählen
+func getEstimatedBiomass(ctx context.Context, pool *pgxpool.Pool) int64 {
+	var total float64
+	query := `SELECT COALESCE(sum(reltuples), 0) FROM pg_class WHERE relname IN ('table0', 'table1', 'table2', 'table3', 'table4', 'deep_archive')`
+	err := pool.QueryRow(ctx, query).Scan(&total)
+	if err != nil {
+		return 0
+	}
+	return int64(total)
+}
+
+// adaptPhysics berechnet das Atmen für Cortex-Grenzen UND koppelt die Buoyancy (Auftrieb) daran
+func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, totalBiomass int64, tickIntervalSec float64) (float64, float64, float64, bool) {
+	// 1. Definition der physikalischen Extreme
+	targetHighIdle, targetLowIdle := 100.0, 95.0
+	targetHighRun, targetLowRun := 150.0, 110.0
+
+	// NEU: Buoyancy Sweet Spots (durch deine Tests ermittelt)
+	targetBuoyIdle := 0.64 // Entspannung: Lässt T0 sauber auf 100% abtropfen
+	targetBuoyRun := 0.85  // Stress: Hält Daten während der Injektion aggressiv in T0
+
+	var targetHigh, targetLow float64
+	var stepHigh, stepLow float64
+
+	if isRunning {
+		targetHigh = targetHighRun
+		targetLow = targetLowRun
+		openUpSeconds := 30.0
+		stepHigh = ((targetHighRun - targetHighIdle) / openUpSeconds) * tickIntervalSec
+		stepLow = ((targetLowRun - targetLowIdle) / openUpSeconds) * tickIntervalSec
+	} else {
+		targetHigh = targetHighIdle
+		targetLow = targetLowIdle
+		hoursToClose := (float64(totalBiomass) / 1000000.0) * 1.5
+		if hoursToClose < 0.01 {
+			hoursToClose = 0.01
+		}
+		secondsToClose := hoursToClose * 3600.0
+
+		stepHigh = ((targetHighRun - targetHighIdle) / secondsToClose) * tickIntervalSec
+		stepLow = ((targetLowRun - targetLowIdle) / secondsToClose) * tickIntervalSec
+	}
+
+	newHigh, newLow := currentHigh, currentLow
+	changed := false
+
+	// Step anwenden (High)
+	if currentHigh < targetHigh {
+		newHigh += stepHigh
+		if newHigh > targetHigh {
+			newHigh = targetHigh
+		}
+	} else if currentHigh > targetHigh {
+		newHigh -= stepHigh
+		if newHigh < targetHigh {
+			newHigh = targetHigh
+		}
+	}
+
+	// Step anwenden (Low)
+	if currentLow < targetLow {
+		newLow += stepLow
+		if newLow > targetLow {
+			newLow = targetLow
+		}
+	} else if currentLow > targetLow {
+		newLow -= stepLow
+		if newLow < targetLow {
+			newLow = targetLow
+		}
+	}
+
+	// Präzisions-Korrektur für Watermarks
+	if math.Abs(newHigh-targetHigh) < 0.0001 {
+		newHigh = targetHigh
+	}
+	if math.Abs(newLow-targetLow) < 0.0001 {
+		newLow = targetLow
+	}
+
+	// ==========================================
+	// 2. MATHEMATISCHE KOPPLUNG DER BUOYANCY
+	// ==========================================
+
+	// Berechnet, wie weit T0 aktuell aufgedehnt ist (0.0 = Idle, 1.0 = Voll aufgepumpt)
+	stretchFactor := (newHigh - targetHighIdle) / (targetHighRun - targetHighIdle)
+	if stretchFactor < 0 {
+		stretchFactor = 0
+	}
+	if stretchFactor > 1 {
+		stretchFactor = 1
+	}
+
+	// Lerp (Linear Interpolation) für die Buoyancy
+	newBuoy := targetBuoyIdle + ((targetBuoyRun - targetBuoyIdle) * stretchFactor)
+	newBuoy = math.Round(newBuoy*1000) / 1000 // Auf 3 Nachkommastellen runden
+
+	if currentHigh != newHigh || currentLow != newLow || math.Abs(currentBuoy-newBuoy) > 0.001 {
+		changed = true
+	}
+
+	return newHigh, newLow, newBuoy, changed
+}
+
 // --- MAIN ---
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Logging Setup
 	logPath := "/tmp/yafad_debug.log"
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	defer logFile.Close()
 	logger := slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
-	// 2. Signal Handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -166,16 +269,15 @@ func main() {
 		cancel()
 	}()
 
-	// 3. Database Connection
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
-		dbUser = "eriks" // Default fallback
+		dbUser = "eriks"
 	}
 	dbPass := os.Getenv("DB_PASSWORD")
 	if dbPass == "" {
-		dbPass = "test" // Default fallback
+		dbPass = "test"
 	}
-	// SSL Mode disable ist wichtig für lokale Dev-Umgebungen
+
 	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
 
 	var hotPool, coldPool *pgxpool.Pool
@@ -183,7 +285,6 @@ func main() {
 
 	fmt.Printf("⏳ Connecting to Database (User: %s)...\n", dbUser)
 
-	// Retry Loop
 	for attempts := 1; attempts <= 10; attempts++ {
 		hotPool, err = pgxpool.New(ctx, connStr)
 		if err == nil {
@@ -196,28 +297,8 @@ func main() {
 		time.Sleep(2 * time.Second)
 	}
 
-	// HELP MESSAGE ON FAILURE
 	if err != nil {
 		fmt.Printf("\n\n❌ FATAL: Could not connect to PostgreSQL Database.\n")
-		fmt.Printf("   Error details: %v\n\n", err)
-
-		fmt.Println("💡 TROUBLESHOOTING:")
-		fmt.Println("   1. Is PostgreSQL running? (sudo systemctl status postgresql)")
-		fmt.Println("   2. Does the database 'yafad_test' exist?")
-		fmt.Println("   3. Are the credentials correct?")
-
-		fmt.Println("\n🔑 HOW TO SET CUSTOM CREDENTIALS:")
-		fmt.Println("   Linux/Mac (Bash):")
-		fmt.Println("     export DB_USER=myuser")
-		fmt.Println("     export DB_PASSWORD=mypassword")
-		fmt.Println("     go run main.go")
-
-		fmt.Println("\n   Windows (PowerShell):")
-		fmt.Println("     $env:DB_USER=\"myuser\"")
-		fmt.Println("     $env:DB_PASSWORD=\"mypassword\"")
-		fmt.Println("     go run main.go")
-
-		fmt.Println("\n   ...or edit the defaults in main.go directly.")
 		os.Exit(1)
 	}
 	fmt.Println(" ✅ Connected!")
@@ -228,15 +309,12 @@ func main() {
 
 	router := &StorageRouter{HotPool: hotPool, ColdPool: coldPool}
 
-	// 4. Load Brain & Config
 	loadBrain()
 	initConfig()
 
-	// 5. Start Config Watcher (Hot Reload)
 	go configWatcher(ctx)
 	go brainWatcher(ctx)
 
-	// 6. Start Metrics Server
 	go func() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
@@ -245,7 +323,6 @@ func main() {
 		}
 	}()
 
-	// 7. Rust Core Init (for Persistence only)
 	rustCore := &cortex.RustCoreFFI{LibraryPath: "./libyafd_core.so"}
 	brain := cortex.NewCortex("brain_data.json", rustCore)
 	go func() {
@@ -262,15 +339,17 @@ func main() {
 		}
 	}()
 
-	// --- MAIN EVENT LOOP ---
 	fmt.Println("🦁 YaFaD v0.9.0 Online. Waiting for Mission Command via Dashboard...")
 
 	startMonitoringService(hotPool)
 	go launchDashboard()
 
+	// Hauptschleife (Tickt jede 1 Sekunde)
 	ticker := time.NewTicker(1 * time.Second)
 	workersStarted := false
 	var wg sync.WaitGroup
+
+	prevState := "UNKNOWN" // <--- NEU: Wir merken uns den vorherigen Zustand
 
 	for {
 		select {
@@ -278,14 +357,38 @@ func main() {
 			wg.Wait()
 			return
 		case <-ticker.C:
+
+			// === 1. DYNAMIC PHYSICS ("Breathing Architecture") ===
+			biomass := getEstimatedBiomass(ctx, hotPool)
+
 			configMu.RLock()
-			state := globalConfig.RunState
+			wHigh := globalConfig.Watermarks.High
+			wLow := globalConfig.Watermarks.Low
+			cBuoy := globalConfig.BuoyancyFactor
+			currentState := globalConfig.RunState // <--- Hier lesen wir den State richtig aus!
+			configMu.RUnlock()
+
+			newHigh, newLow, newBuoy, physicsChanged := adaptPhysics(wHigh, wLow, cBuoy, (currentState == "RUNNING"), biomass, 1.0)
+
+			if physicsChanged {
+				configMu.Lock()
+				globalConfig.Watermarks.High = newHigh
+				globalConfig.Watermarks.Low = newLow
+				globalConfig.BuoyancyFactor = newBuoy
+				saveConfigToJSON(globalConfig)
+				configMu.Unlock()
+			}
+			// =======================================================
+
+			// === 2. MISSION CONTROL LOGIC ===
+			configMu.RLock()
 			cpu := globalConfig.Limits.MaxCpuPercent
 			totalRecords := globalConfig.InjectTotal
 			flush := globalConfig.FlushOnStart
 			configMu.RUnlock()
 
-			if state == "RUNNING" && !workersStarted {
+			// Reagiere auf JEDEN Übergang zu "RUNNING"
+			if currentState == "RUNNING" && prevState != "RUNNING" {
 				fmt.Printf("🚀 Command received: START MISSION (Target: %d)\n", totalRecords)
 
 				if flush {
@@ -301,24 +404,27 @@ func main() {
 					configMu.Unlock()
 				}
 
-				workersStarted = true
-				maxCores := int(math.Ceil(float64(runtime.NumCPU()) * (float64(cpu) / 100.0)))
-				if maxCores < 1 {
-					maxCores = 1
+				if !workersStarted {
+					workersStarted = true
+					maxCores := int(math.Ceil(float64(runtime.NumCPU()) * (float64(cpu) / 100.0)))
+					if maxCores < 1 {
+						maxCores = 1
+					}
+					runtime.GOMAXPROCS(maxCores)
+					wg.Add(5)
+					startWorkers(ctx, router, &wg)
 				}
-				runtime.GOMAXPROCS(maxCores)
-
-				wg.Add(5)
-				startWorkers(ctx, router, &wg)
 
 				if totalRecords > 0 {
 					go runInjector(ctx, hotPool, totalRecords)
 				}
-			} else if state == "STOPPED" && workersStarted {
+			} else if currentState == "STOPPED" && workersStarted {
 				fmt.Println("🛑 Command received: ABORT MISSION")
 				cancel()
 				return
 			}
+
+			prevState = currentState // <--- Jetzt merkt er sich den State sauber!
 		}
 	}
 }
@@ -331,11 +437,9 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		nextTable = "deep_archive"
 	}
 
-	// ECO-MODE
 	minSleep := 10 * time.Millisecond
 	maxSleep := 2000 * time.Millisecond
 	currentSleep := 100 * time.Millisecond
-
 	errorBackoff := 1 * time.Second
 	var prevCount int
 
@@ -376,7 +480,6 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		prevCount = count
 		pressure := float64(count) / float64(capacity)
 
-		// 1. ARCHIVE GATEKEEPER
 		archiveGateClosed := false
 		if tier == 4 && pressure < 0.90 {
 			archiveGateClosed = true
@@ -384,18 +487,13 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 
 		lambda := 0.005
 
-		// BRAIN INTEGRATION WITH CLAMP
 		brainMu.RLock()
 		w := brainWeights
 		brainMu.RUnlock()
 
 		if w.WPressure != 0 {
 			mlLambda := (w.WPressure * pressure) + (w.WVelocity * velocity) + w.Intercept
-
-			// CLAMP: Wenn wir im Leerlauf sind UND der User eine hohe Buoyancy will,
-			// zwingen wir den Intercept in die Knie.
 			if (runState == "IDLE" || runState == "SETTLING") && pressure < userBuoyancy {
-				// Intercept fast ausblenden
 				mlLambda = (w.WPressure * pressure) + (w.WVelocity * velocity) + (w.Intercept * 0.05)
 			}
 			lambda = mlLambda
@@ -404,17 +502,15 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 			lambda = 0.005 + pidOut
 		}
 
-		// 2. USER CONTROLLED BUOYANCY
-		if pressure > 1.05 {
+		// Dynamisches Überdruckventil (wHigh liegt z.B. bei 150.0 oder 100.0)
+		dynamicHighLimit := globalConfig.Watermarks.High / 100.0
+		if pressure > dynamicHighLimit {
 			lambda = 0.5
 		}
 
-		// Wenn Druck kleiner als User-Setting -> Lambda AUS (Schwimmweste aktiv)
-		// Das targetRatio ist meistens 1.0, also ist userBuoyancy der Prozentwert (0.7 = 70%)
 		if pressure < (targetRatio * userBuoyancy) {
 			lambda = 0.0001
 		}
-
 		if archiveGateClosed {
 			lambda = 0.00001
 		}
@@ -431,7 +527,6 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 			lambdaMu.Unlock()
 		}
 
-		// 3. ECO-THROTTLE
 		if count > 0 {
 			throttleFactor := 1.0 - pressure
 			if throttleFactor < 0 {
@@ -446,7 +541,6 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 			currentSleep = maxSleep
 		}
 
-		// MIGRATION
 		if count > 0 {
 			rows, err := sourcePool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000", sourceTable))
 			if err == nil {
@@ -470,8 +564,7 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 							shouldMigrate = true
 						}
 					} else {
-						// Migration nur wenn Lambda aktiv ist oder Druck kritisch
-						if (uNew < 0.4 && lambda > 0.001) || pressure > 1.05 {
+						if (uNew < 0.4 && lambda > 0.001) || pressure > 1.00 {
 							shouldMigrate = true
 						}
 					}
@@ -497,20 +590,24 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 	}
 }
 
-// --- INJECTOR (Sawtooth / Pulse Mode - Dynamic Watermarks) ---
+// --- INJECTOR ---
 func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("🔨 Compiling Generator...")
 	exec.Command("go", "build", "-o", "yafad_sim", "generator.go").Run()
 
-	configMu.Lock()
-	globalConfig.InjectDone = 0
-	configMu.Unlock()
+	configMu.RLock()
+	done := globalConfig.InjectDone
+	configMu.RUnlock()
 
 	batchSize := 10000
-	remaining := total
-	isDraining := false
+	remaining := total - done
+	if remaining <= 0 {
+		fmt.Println("\n✅ Target already reached. Nothing to inject.")
+		return
+	}
 
-	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records\n", total)
+	isDraining := false
+	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records (Remaining: %d)\n", total, remaining)
 
 	for remaining > 0 {
 		select {
@@ -528,24 +625,16 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 			continue
 		}
 
-		// DYNAMISCHE CONFIG: Watermarks hier live lesen!
 		configMu.RLock()
 		t0Cap := globalConfig.Capacities["table0"]
-		globalConfig.PID.Kp = 2.0
-		globalConfig.PID.Ki = 0.1
-
-		// Watermarks holen
 		wHigh := globalConfig.Watermarks.High
 		wLow := globalConfig.Watermarks.Low
-
-		// Fallback Safety (falls JSON leer)
 		if wHigh <= 0 {
 			wHigh = 150.0
 		}
 		if wLow <= 0 {
 			wLow = 120.0
 		}
-
 		configMu.RUnlock()
 
 		if t0Cap == 0 {
@@ -553,9 +642,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 		}
 		fillPct := (float64(t0Count) / float64(t0Cap)) * 100.0
 
-		// Pulse Logic mit dynamischen Watermarks
 		if !isDraining {
-			// PHASE: FÜLLEN
 			if fillPct >= wHigh {
 				isDraining = true
 				fmt.Printf("\n🌊 T0 High Water Mark (%.1f%% >= %.1f%%). Switching to DRAIN Mode.\n", fillPct, wHigh)
@@ -583,7 +670,6 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 			}
 
 		} else {
-			// PHASE: DRAIN
 			if fillPct <= wLow {
 				isDraining = false
 				fmt.Printf("\n⚡ T0 Low Water Mark (%.1f%% <= %.1f%%). RESUMING INJECTION.\n", fillPct, wLow)
@@ -600,7 +686,6 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("\n🏁 INJECTION COMPLETE. Finalizing System...")
 	configMu.Lock()
 	globalConfig.RunState = "SETTLING"
-	globalConfig.PID.Kp = 1.0
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
 	time.Sleep(5 * time.Second)
@@ -611,7 +696,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("✅ MISSION ACCOMPLISHED.")
 }
 
-// --- HELPERS (Existing ones + Bulletproof Launcher) ---
+// --- HELPERS ---
 func saveConfigToJSON(config SystemConfig) {
 	data, _ := json.MarshalIndent(config, "", "  ")
 	_ = os.WriteFile(CONFIG_FILE, data, 0644)
@@ -671,31 +756,30 @@ func initConfig() {
 	data, err := os.ReadFile(CONFIG_FILE)
 	if err == nil {
 		if json.Unmarshal(data, &globalConfig) == nil {
-			globalConfig.RunState = "IDLE"
-			// Ensure defaults if keys missing
+			globalConfig.RunState = "IDLE" // Nach Neustart immer IDLE
 			if globalConfig.BuoyancyFactor == 0 {
-				globalConfig.BuoyancyFactor = 0.7
+				globalConfig.BuoyancyFactor = 0.64
 			}
 			if globalConfig.Watermarks.High == 0 {
 				globalConfig.Watermarks.High = 150.0
 			}
 			if globalConfig.Watermarks.Low == 0 {
-				globalConfig.Watermarks.Low = 120.0
+				globalConfig.Watermarks.Low = 100.0
 			}
-
 			saveConfigToJSON(globalConfig)
 			return
 		}
 	}
-	// FALLBACK: Wenn keine Config existiert
+
+	// Fallback nur, wenn Datei komplett fehlt
 	globalConfig = SystemConfig{
 		RunState:       "IDLE",
 		PID:            PIDConfig{1.5, 0.05, 0.2},
 		Limits:         ResourceLimits{MaxCpuPercent: 50},
 		Capacities:     map[string]int{"table0": 100000},
-		BuoyancyFactor: 0.7,
-		Watermarks:     WatermarkConfig{150.0, 120.0},
-		T0HardLimit:    100000, // Hier setzen wir den Default für frische Installationen
+		BuoyancyFactor: 0.64,
+		Watermarks:     WatermarkConfig{150.0, 100.0},
+		T0HardLimit:    100000,
 	}
 	saveConfigToJSON(globalConfig)
 }
@@ -720,11 +804,10 @@ func configWatcher(ctx context.Context) {
 					var nc SystemConfig
 					if json.Unmarshal(data, &nc) == nil {
 						configMu.Lock()
-						// Alle Felder kopieren
 						globalConfig.RunState = nc.RunState
 						globalConfig.InjectTotal = nc.InjectTotal
 						globalConfig.InjectDone = nc.InjectDone
-						globalConfig.T0HardLimit = nc.T0HardLimit // NEU
+						globalConfig.T0HardLimit = nc.T0HardLimit
 						globalConfig.TargetRatio = nc.TargetRatio
 						globalConfig.FlushOnStart = nc.FlushOnStart
 						globalConfig.Capacities = nc.Capacities
@@ -740,9 +823,7 @@ func configWatcher(ctx context.Context) {
 	}
 }
 
-// LAUNCHER HELPER
 func launchDashboard() {
-	// 1. ZOMBIE KILLER
 	exec.Command("pkill", "-f", "dashboard.py").Run()
 	time.Sleep(500 * time.Millisecond)
 
@@ -815,6 +896,15 @@ func startMonitoringService(pool *pgxpool.Pool) {
 	configMu.RLock()
 	caps := globalConfig.Capacities
 	configMu.RUnlock()
+
+	// --- BUGFIX: Schutz vor gelöschter CSV-Datei ---
+	if _, err := os.Stat("yafad_metrics.csv"); os.IsNotExist(err) {
+		fmt.Println("⚠️  yafad_metrics.csv fehlt! Erstelle eine neue Datei mit Headern...")
+		f, _ := os.Create("yafad_metrics.csv")
+		f.WriteString("timestamp,runtime_sec,total_biomass,t0,t1,t2,t3,t4,deep_archive,t0_pct,t1_pct,t2_pct,t3_pct,t4_pct,lambda,phi_diff\n")
+		f.Close()
+	}
+	// -----------------------------------------------
 
 	monCaps := make(map[string]float64)
 	for k, v := range caps {
