@@ -56,6 +56,7 @@ type SystemConfig struct {
 	InjectTotal     int             `json:"inject_total"`
 	InjectDone      int             `json:"inject_done"`
 	T0HardLimit     int             `json:"t0_hard_limit"`
+	ActiveTiers     []int           `json:"active_tiers"` // <--- NEU: Welche Tabellen laufen lokal? (z.B. [0] oder [0,1,2,3,4])
 	Capacities      map[string]int  `json:"capacities"`
 	TargetRatio     float64         `json:"target_ratio"`
 	FlushOnStart    bool            `json:"flush_on_start"`
@@ -411,7 +412,6 @@ func main() {
 						maxCores = 1
 					}
 					runtime.GOMAXPROCS(maxCores)
-					wg.Add(5)
 					startWorkers(ctx, router, &wg)
 				}
 
@@ -503,8 +503,7 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		}
 
 		// Dynamisches Überdruckventil (wHigh liegt z.B. bei 150.0 oder 100.0)
-		dynamicHighLimit := globalConfig.Watermarks.High / 100.0
-		if pressure > dynamicHighLimit {
+		if pressure > 1.00 {
 			lambda = 0.5
 		}
 
@@ -766,6 +765,12 @@ func initConfig() {
 			if globalConfig.Watermarks.Low == 0 {
 				globalConfig.Watermarks.Low = 100.0
 			}
+
+			// FIX: Fallback, falls die JSON noch keine Tiers definiert hat!
+			if len(globalConfig.ActiveTiers) == 0 {
+				globalConfig.ActiveTiers = []int{0, 1, 2, 3, 4}
+			}
+
 			saveConfigToJSON(globalConfig)
 			return
 		}
@@ -774,6 +779,7 @@ func initConfig() {
 	// Fallback nur, wenn Datei komplett fehlt
 	globalConfig = SystemConfig{
 		RunState:       "IDLE",
+		ActiveTiers:    []int{0, 1, 2, 3, 4}, // <--- NEU: Default Heavy Node
 		PID:            PIDConfig{1.5, 0.05, 0.2},
 		Limits:         ResourceLimits{MaxCpuPercent: 50},
 		Capacities:     map[string]int{"table0": 100000},
@@ -815,6 +821,12 @@ func configWatcher(ctx context.Context) {
 						globalConfig.Limits = nc.Limits
 						globalConfig.BuoyancyFactor = nc.BuoyancyFactor
 						globalConfig.Watermarks = nc.Watermarks
+						if len(nc.ActiveTiers) > 0 {
+							globalConfig.ActiveTiers = nc.ActiveTiers
+						} else {
+							globalConfig.ActiveTiers = []int{0, 1, 2, 3, 4}
+						}
+
 						configMu.Unlock()
 					}
 				}
@@ -939,9 +951,31 @@ func startMonitoringService(pool *pgxpool.Pool) {
 }
 
 func startWorkers(ctx context.Context, router *StorageRouter, wg *sync.WaitGroup) {
-	go func() { defer wg.Done(); runWorker(ctx, router, 0, NewPID(1.5, 0.05, 0.2)) }()
-	go func() { defer wg.Done(); runWorker(ctx, router, 1, NewPID(1.2, 0.05, 0.2)) }()
-	go func() { defer wg.Done(); runWorker(ctx, router, 2, NewPID(0.8, 0.01, 0.1)) }()
-	go func() { defer wg.Done(); runWorker(ctx, router, 3, NewPID(0.5, 0.01, 0.1)) }()
-	go func() { defer wg.Done(); runWorker(ctx, router, 4, NewPID(0.2, 0.00, 0.0)) }()
+	configMu.RLock()
+	tiers := globalConfig.ActiveTiers
+	configMu.RUnlock()
+
+	// Die Standard-PID Werte für die verschiedenen Schichten (werden später dynamisch überschrieben)
+	defaultPIDs := map[int]*PIDController{
+		0: NewPID(1.5, 0.05, 0.2),
+		1: NewPID(1.2, 0.05, 0.2),
+		2: NewPID(0.8, 0.01, 0.1),
+		3: NewPID(0.5, 0.01, 0.1),
+		4: NewPID(0.2, 0.00, 0.0),
+	}
+
+	for _, tier := range tiers {
+		wg.Add(1) // Dynamisch einen Worker zum WaitGroup hinzufügen
+
+		pid, exists := defaultPIDs[tier]
+		if !exists {
+			pid = NewPID(0.5, 0.01, 0.1) // Fallback
+		}
+
+		t := tier // Shadowing für die Goroutine
+		go func(workerTier int, workerPID *PIDController) {
+			defer wg.Done()
+			runWorker(ctx, router, workerTier, workerPID)
+		}(t, pid)
+	}
 }
