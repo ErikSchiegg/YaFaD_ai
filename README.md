@@ -4,21 +4,20 @@
 
 ---
 
-# 🚀 What's New in v0.9.0: "The Living Lung & The Industrial Titan"
-We have crossed the threshold from "prototype" to production-grade phenomenon. v0.9.0 isn't just an update; it's a metamorphosis. We pushed YaFaD to the limit with a 4-million-record stress test, and it didn't just survive—it thrived. The system now "breathes" data, respects physical hardware limits, and offers a Mission Control interface that puts you in the pilot's seat of a living organism.
+# 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
 
-## 🔥 Epic New Features
-### 🫁 Pulse Injection (The Living Lung):
-YaFaD has evolved a respiratory system. We’ve replaced linear loading with a biological Sawtooth Strategy. The system now "inhales" data into T0 until it hits a configurable High Watermark (e.g., 150%), pauses to let gravity do its work ("exhale" to 120%), and then resumes. This prevents "Brick Wall" memory crashes and allows for theoretically infinite ingestion without clogging the arteries.
+Version 0.9.1 marks a massive breakthrough in the YaFaD ecosystem. The system has officially evolved from a theoretical engine into a highly stable, self-regulating data organism
 
-### 🏗️ Hardware-First Architecture:
-Theoretical math is great, but expensive DDR5 RAM is real. v0.9.0 introduces T0 Hard Limits. You can now define the exact physical capacity of your hot tier (e.g., "50k records in RAM"). YaFaD creates a perfect Golden Ratio pyramid downwards from that hardware constraint, ensuring your server never swaps or crashes, no matter how massive the total dataset is.
+In our latest stress tests, the engine successfully processed and cascaded 5,000,000 records without a single hitch, proving that the biological data-decay model works flawlessly at scale.
 
-### 🎛️ Mission Control v2 (Haptic Feedback):
-The Gradio dashboard has been completely overhauled. It now features a Live RAM Calculator that warns you of peak memory usage before you launch. You get real-time controls to tune the Physics (Buoyancy), adjust PID values on the fly, and dynamically shift the High/Low Watermarks while the engine is running. It feels less like a script and more like a cockpit.
+## ✨ Highlights of this Release:
 
-### 📉 proven Stability at Scale:
-We threw 4,000,000 records at it. The result? A perfectly stacked biomass distribution. T4 (Cold Storage) carried the heavy load (1.5M+), while T0 (Hot) floated effortlessly on top, maintaining a Phi Deviation of <0.4. The "Deep Archive" gatekeeper successfully filtered the dead data, proving that YaFaD is ready for enterprise-level workloads.
+* 🧬 The Perfect Golden Ratio ($\Phi$): YaFaD achieved true mathematical equilibrium. Through pure organic pressure and Lambda-decay, the system automatically distributed 5 million records across 5 tiers, hitting a near-perfect 1.618 ratio between layers (e.g., the T3/T2 ratio landed at exactly ```1.6182```)
+* 🫁 True "Breathing" Architecture: The physical deadlocks are gone. The Cortex (T0) now perfectly handles massive pulse injections by expanding (High Watermark) and naturally exhaling data down the fractal cascade. Once equilibrium is reached, the organism peacefully goes to sleep at 0% CPU load.
+* 🧩 Variable Anatomy: Introduced dynamic ```ActiveTiers```. YaFaD nodes can now be instantly configured as heavy core-nodes (T0-T4) or lightweight edge-nodes (e.g., T0 only), laying the exact groundwork for distributed multi-node clusters.
+* 🎛️ Synchronized Mission Control: The Gradio Dashboard and BubbleTea TUI are now in complete harmony, allowing for live, on-the-fly physics tuning, instant database flushing, and real-time monitoring of the system's "biomass" without ever restarting the engine.
+
+Next Stop: Evolution into a Multi-Organism. We are preparing the network for Epidemic Routing (Gossip Protocol) and End-to-End Payload Encryption, allowing independent YaFaD cells to communicate and offload data across distributed devices! 🕸️
 
 ## The Result:
 A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
