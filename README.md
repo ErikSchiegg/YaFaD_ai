@@ -116,17 +116,59 @@ For the complete operations experience, run the components in three separate ter
 
 3. Terminal C: ```./start_dashboard.sh``` (The Visuals)
 
+## 🛠️ Pro Tip: Running YaFaD as a Linux Background Service (Systemd)
+If you want YaFaD to survive reboots and run autonomously in the background (highly recommended for Edge/Core Nodes), you can easily set it up as a ```systemd``` service.
+
+1. Build the engine
+First, compile the Go code into a highly efficient binary:
+```bash
+go build -o yafad_engine main.go
+```
+
+2. Create the Service File
+Create a new file at ```/etc/systemd/system/yafad.service``` (requires root privileges):
+```bash
+sudo nano /etc/systemd/system/yafad.service
+```
+Paste the following configuration (make sure to replace ```/path/to/yafad and your_username``` with your *actual* paths/user):
+```Ini, TOML
+[Unit]
+Description=YaFaD - Biological Data Fractal Engine
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/yafad
+ExecStart=/path/to/yafad/yafad_engine
+Restart=always
+RestartSec=3
+
+# Environment variables if needed
+Environment="DB_USER=eriks"
+Environment="DB_PASSWORD=test"
+
+[Install]
+WantedBy=multi-user.target
+```
+3. Enable and Start the Organism
+Reload the systemd manager, enable YaFaD to start on boot, and ignite the engine:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable yafad      # Starts YaFaD automatically on every reboot
+sudo systemctl start yafad       # Starts it right now
+```
+4. Check the Status & Logs
+To see the live heartbeat and logs of your YaFaD node:
+```bash
+sudo systemctl status yafad
+journalctl -u yafad -f
+```
 ---
 **Result:**
 
 <p align="center">
   <img src="assets/Grafana_integration1.png" alt="YaFaD Equilibrium Graph" width="100%">
-</p>
-<p align="center">
-  <img src="assets/Grafana_integration2.png" alt="YaFaD Equilibrium Graph" width="100%">
-</p>
-<p align="center">
-  <img src="assets/Grafana_integration3.png" alt="YaFaD Equilibrium Graph" width="100%">
 </p>
 
 # 🗺️ YaFaD Evolution Roadmap
