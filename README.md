@@ -5,7 +5,7 @@
 ---
 ### 🎥 Watch the Explainer Videos
 
-**🇬🇧 English Version:** (right-click to open in new tab)
+***🇺🇸🇬🇧 English Version:*** (right-click to open in new tab)
 
 <a href="https://www.youtube.com/watch?v=pBhPLxvwYpE">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
