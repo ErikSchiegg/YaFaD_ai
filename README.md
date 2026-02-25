@@ -5,13 +5,14 @@
 ---
 ### 🎥 Watch the Explainer Videos
 
-***🇺🇸🇬🇧 English Version:** (right-click to open in new tab)
+**🇺🇸🇬🇧 English Version:** (right-click to open in new tab)
 
 <a href="https://www.youtube.com/watch?v=pBhPLxvwYpE">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
 </a>
+<br>
 
-***🇩🇪 Deutsche Version:**
+**🇩🇪 Deutsche Version:**
 
 <a href="https://www.youtube.com/watch?v=EAv0NE9jy7E">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
