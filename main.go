@@ -8,8 +8,13 @@ extern double calculate_decay(double u_last, double lambda, double delta_t);
 import "C"
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -130,6 +135,89 @@ func (pid *PIDController) Update(currentVal, setPoint float64) float64 {
 	derivative := (error - pid.PrevError) / dt
 	pid.PrevError = error
 	return (pid.Kp * error) + (pid.Ki * pid.Integral) + (pid.Kd * derivative)
+}
+
+// --- IMMUNSYSTEM (AES-256-GCM Verschlüsselung) ---
+
+const KEY_FILE = "yafad_secret.key"
+
+var globalSymmetricKey []byte
+
+func initCrypto() {
+	// Versuche, den Schlüssel zu laden
+	data, err := os.ReadFile(KEY_FILE)
+	if err == nil && len(data) == 32 {
+		globalSymmetricKey = data
+		fmt.Println("🛡️  Immune System Online: AES-256 Key loaded.")
+		return
+	}
+
+	// Wenn kein Schlüssel existiert (oder er ungültig ist), generiere einen neuen
+	fmt.Println("⚠️  No valid key found. Generating new AES-256 Secret Key...")
+	globalSymmetricKey = make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, globalSymmetricKey); err != nil {
+		panic("Failed to generate secure random key: " + err.Error())
+	}
+	_ = os.WriteFile(KEY_FILE, globalSymmetricKey, 0600) // Nur der Besitzer darf die Datei lesen!
+	fmt.Println("🛡️  Immune System Online: New Key generated and saved.")
+}
+
+func encryptPayload(plaintext string) string {
+	if len(globalSymmetricKey) != 32 {
+		return plaintext
+	} // Fallback falls Crypto offline
+
+	block, err := aes.NewCipher(globalSymmetricKey)
+	if err != nil {
+		return plaintext
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return plaintext
+	}
+
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return plaintext
+	}
+
+	ciphertext := aesGCM.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext) // Base64 für den sicheren Text-Transport
+}
+
+func decryptPayload(encoded string) string {
+	if len(globalSymmetricKey) != 32 {
+		return encoded
+	}
+
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return encoded
+	} // Ist vermutlich nicht verschlüsselt
+
+	block, err := aes.NewCipher(globalSymmetricKey)
+	if err != nil {
+		return encoded
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return encoded
+	}
+
+	nonceSize := aesGCM.NonceSize()
+	if len(data) < nonceSize {
+		return encoded
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return encoded
+	} // Falscher Schlüssel!
+
+	return string(plaintext)
 }
 
 // --- ROUTER ---
@@ -312,6 +400,7 @@ func main() {
 
 	loadBrain()
 	initConfig()
+	initCrypto()
 
 	go configWatcher(ctx)
 	go brainWatcher(ctx)
@@ -755,7 +844,7 @@ func initConfig() {
 	data, err := os.ReadFile(CONFIG_FILE)
 	if err == nil {
 		if json.Unmarshal(data, &globalConfig) == nil {
-			globalConfig.RunState = "IDLE" // Nach Neustart immer IDLE
+			globalConfig.RunState = "IDLE"
 			if globalConfig.BuoyancyFactor == 0 {
 				globalConfig.BuoyancyFactor = 0.64
 			}
@@ -765,11 +854,10 @@ func initConfig() {
 			if globalConfig.Watermarks.Low == 0 {
 				globalConfig.Watermarks.Low = 100.0
 			}
-
-			// FIX: Fallback, falls die JSON noch keine Tiers definiert hat!
 			if len(globalConfig.ActiveTiers) == 0 {
 				globalConfig.ActiveTiers = []int{0, 1, 2, 3, 4}
 			}
+			// ----------------------------------
 
 			saveConfigToJSON(globalConfig)
 			return
