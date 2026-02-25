@@ -7,6 +7,7 @@ extern double calculate_decay(double u_last, double lambda, double delta_t);
 */
 import "C"
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -17,6 +18,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -61,7 +63,7 @@ type SystemConfig struct {
 	InjectTotal     int             `json:"inject_total"`
 	InjectDone      int             `json:"inject_done"`
 	T0HardLimit     int             `json:"t0_hard_limit"`
-	ActiveTiers     []int           `json:"active_tiers"` // <--- NEU: Welche Tabellen laufen lokal? (z.B. [0] oder [0,1,2,3,4])
+	ActiveTiers     []int           `json:"active_tiers"`
 	Capacities      map[string]int  `json:"capacities"`
 	TargetRatio     float64         `json:"target_ratio"`
 	FlushOnStart    bool            `json:"flush_on_start"`
@@ -86,6 +88,29 @@ type Record struct {
 	Payload      string
 	UtilityIndex float64
 	LastActivity time.Time
+}
+
+// --- GOSSIP & OSMOSE STRUCTURES ---
+var (
+	localNodeID = fmt.Sprintf("Node-%d", time.Now().UnixNano()%10000)
+	peerTable   = make(map[string]NodeHeartbeat)
+	peerMu      sync.RWMutex
+)
+
+type NodeHeartbeat struct {
+	NodeID    string    `json:"node_id"`
+	IP        string    `json:"ip"`
+	Tiers     []int     `json:"tiers"`
+	Pressure  float64   `json:"pressure"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type TransferPayload struct {
+	Tier         int       `json:"tier"`
+	ID           string    `json:"id"`
+	Payload      string    `json:"payload"`
+	UtilityIndex float64   `json:"utility_index"`
+	LastActivity time.Time `json:"last_activity"`
 }
 
 var (
@@ -138,13 +163,11 @@ func (pid *PIDController) Update(currentVal, setPoint float64) float64 {
 }
 
 // --- IMMUNSYSTEM (AES-256-GCM Verschlüsselung) ---
-
 const KEY_FILE = "yafad_secret.key"
 
 var globalSymmetricKey []byte
 
 func initCrypto() {
-	// Versuche, den Schlüssel zu laden
 	data, err := os.ReadFile(KEY_FILE)
 	if err == nil && len(data) == 32 {
 		globalSymmetricKey = data
@@ -152,20 +175,19 @@ func initCrypto() {
 		return
 	}
 
-	// Wenn kein Schlüssel existiert (oder er ungültig ist), generiere einen neuen
 	fmt.Println("⚠️  No valid key found. Generating new AES-256 Secret Key...")
 	globalSymmetricKey = make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, globalSymmetricKey); err != nil {
 		panic("Failed to generate secure random key: " + err.Error())
 	}
-	_ = os.WriteFile(KEY_FILE, globalSymmetricKey, 0600) // Nur der Besitzer darf die Datei lesen!
+	_ = os.WriteFile(KEY_FILE, globalSymmetricKey, 0600)
 	fmt.Println("🛡️  Immune System Online: New Key generated and saved.")
 }
 
 func encryptPayload(plaintext string) string {
 	if len(globalSymmetricKey) != 32 {
 		return plaintext
-	} // Fallback falls Crypto offline
+	}
 
 	block, err := aes.NewCipher(globalSymmetricKey)
 	if err != nil {
@@ -183,7 +205,7 @@ func encryptPayload(plaintext string) string {
 	}
 
 	ciphertext := aesGCM.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext) // Base64 für den sicheren Text-Transport
+	return base64.StdEncoding.EncodeToString(ciphertext)
 }
 
 func decryptPayload(encoded string) string {
@@ -194,7 +216,7 @@ func decryptPayload(encoded string) string {
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return encoded
-	} // Ist vermutlich nicht verschlüsselt
+	}
 
 	block, err := aes.NewCipher(globalSymmetricKey)
 	if err != nil {
@@ -215,7 +237,7 @@ func decryptPayload(encoded string) string {
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return encoded
-	} // Falscher Schlüssel!
+	}
 
 	return string(plaintext)
 }
@@ -233,9 +255,7 @@ func (r *StorageRouter) GetPool(tier int) *pgxpool.Pool {
 	return r.HotPool
 }
 
-// --- NEW: DYNAMIC BIOMASS AND WATERMARK LOGIC ---
-
-// getEstimatedBiomass fragt in <1ms die interne Statistik von PostgreSQL ab, anstatt Millionen Zeilen zu zählen
+// --- DYNAMIC BIOMASS AND WATERMARK LOGIC ---
 func getEstimatedBiomass(ctx context.Context, pool *pgxpool.Pool) int64 {
 	var total float64
 	query := `SELECT COALESCE(sum(reltuples), 0) FROM pg_class WHERE relname IN ('table0', 'table1', 'table2', 'table3', 'table4', 'deep_archive')`
@@ -246,15 +266,12 @@ func getEstimatedBiomass(ctx context.Context, pool *pgxpool.Pool) int64 {
 	return int64(total)
 }
 
-// adaptPhysics berechnet das Atmen für Cortex-Grenzen UND koppelt die Buoyancy (Auftrieb) daran
 func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, totalBiomass int64, tickIntervalSec float64) (float64, float64, float64, bool) {
-	// 1. Definition der physikalischen Extreme
 	targetHighIdle, targetLowIdle := 100.0, 95.0
 	targetHighRun, targetLowRun := 150.0, 110.0
 
-	// NEU: Buoyancy Sweet Spots (durch deine Tests ermittelt)
-	targetBuoyIdle := 0.64 // Entspannung: Lässt T0 sauber auf 100% abtropfen
-	targetBuoyRun := 0.85  // Stress: Hält Daten während der Injektion aggressiv in T0
+	targetBuoyIdle := 0.64
+	targetBuoyRun := 0.85
 
 	var targetHigh, targetLow float64
 	var stepHigh, stepLow float64
@@ -281,7 +298,6 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 	newHigh, newLow := currentHigh, currentLow
 	changed := false
 
-	// Step anwenden (High)
 	if currentHigh < targetHigh {
 		newHigh += stepHigh
 		if newHigh > targetHigh {
@@ -294,7 +310,6 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 		}
 	}
 
-	// Step anwenden (Low)
 	if currentLow < targetLow {
 		newLow += stepLow
 		if newLow > targetLow {
@@ -307,7 +322,6 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 		}
 	}
 
-	// Präzisions-Korrektur für Watermarks
 	if math.Abs(newHigh-targetHigh) < 0.0001 {
 		newHigh = targetHigh
 	}
@@ -315,11 +329,6 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 		newLow = targetLow
 	}
 
-	// ==========================================
-	// 2. MATHEMATISCHE KOPPLUNG DER BUOYANCY
-	// ==========================================
-
-	// Berechnet, wie weit T0 aktuell aufgedehnt ist (0.0 = Idle, 1.0 = Voll aufgepumpt)
 	stretchFactor := (newHigh - targetHighIdle) / (targetHighRun - targetHighIdle)
 	if stretchFactor < 0 {
 		stretchFactor = 0
@@ -328,9 +337,8 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 		stretchFactor = 1
 	}
 
-	// Lerp (Linear Interpolation) für die Buoyancy
 	newBuoy := targetBuoyIdle + ((targetBuoyRun - targetBuoyIdle) * stretchFactor)
-	newBuoy = math.Round(newBuoy*1000) / 1000 // Auf 3 Nachkommastellen runden
+	newBuoy = math.Round(newBuoy*1000) / 1000
 
 	if currentHigh != newHigh || currentLow != newLow || math.Abs(currentBuoy-newBuoy) > 0.001 {
 		changed = true
@@ -402,12 +410,35 @@ func main() {
 	initConfig()
 	initCrypto()
 
+	// GOSSIP PROTOKOLL STARTEN!
+	startGossipProtocol(ctx, hotPool)
+
 	go configWatcher(ctx)
 	go brainWatcher(ctx)
 
 	go func() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
+
+		// Osmose Empfänger
+		http.HandleFunc("/osmosis", func(w http.ResponseWriter, r *http.Request) {
+			var tp TransferPayload
+			if err := json.NewDecoder(r.Body).Decode(&tp); err != nil {
+				http.Error(w, "Bad Request", 400)
+				return
+			}
+
+			targetTable := fmt.Sprintf("table%d", tp.Tier)
+			targetPool := router.GetPool(tp.Tier)
+
+			_, err := targetPool.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable), tp.ID, tp.Payload, tp.UtilityIndex, tp.LastActivity)
+
+			if err != nil {
+				http.Error(w, "DB Error", 500)
+				return
+			}
+			w.WriteHeader(200)
+		})
 		if err := http.ListenAndServe(":2112", nil); err != nil && err != http.ErrServerClosed {
 			slog.Error("Prometheus Server failed", "error", err)
 		}
@@ -434,12 +465,11 @@ func main() {
 	startMonitoringService(hotPool)
 	go launchDashboard()
 
-	// Hauptschleife (Tickt jede 1 Sekunde)
 	ticker := time.NewTicker(1 * time.Second)
 	workersStarted := false
 	var wg sync.WaitGroup
 
-	prevState := "UNKNOWN" // <--- NEU: Wir merken uns den vorherigen Zustand
+	prevState := "UNKNOWN"
 
 	for {
 		select {
@@ -448,14 +478,13 @@ func main() {
 			return
 		case <-ticker.C:
 
-			// === 1. DYNAMIC PHYSICS ("Breathing Architecture") ===
 			biomass := getEstimatedBiomass(ctx, hotPool)
 
 			configMu.RLock()
 			wHigh := globalConfig.Watermarks.High
 			wLow := globalConfig.Watermarks.Low
 			cBuoy := globalConfig.BuoyancyFactor
-			currentState := globalConfig.RunState // <--- Hier lesen wir den State richtig aus!
+			currentState := globalConfig.RunState
 			configMu.RUnlock()
 
 			newHigh, newLow, newBuoy, physicsChanged := adaptPhysics(wHigh, wLow, cBuoy, (currentState == "RUNNING"), biomass, 1.0)
@@ -468,16 +497,13 @@ func main() {
 				saveConfigToJSON(globalConfig)
 				configMu.Unlock()
 			}
-			// =======================================================
 
-			// === 2. MISSION CONTROL LOGIC ===
 			configMu.RLock()
 			cpu := globalConfig.Limits.MaxCpuPercent
 			totalRecords := globalConfig.InjectTotal
 			flush := globalConfig.FlushOnStart
 			configMu.RUnlock()
 
-			// Reagiere auf JEDEN Übergang zu "RUNNING"
 			if currentState == "RUNNING" && prevState != "RUNNING" {
 				fmt.Printf("🚀 Command received: START MISSION (Target: %d)\n", totalRecords)
 
@@ -513,7 +539,7 @@ func main() {
 				return
 			}
 
-			prevState = currentState // <--- Jetzt merkt er sich den State sauber!
+			prevState = currentState
 		}
 	}
 }
@@ -591,7 +617,6 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 			lambda = 0.005 + pidOut
 		}
 
-		// Dynamisches Überdruckventil (wHigh liegt z.B. bei 150.0 oder 100.0)
 		if pressure > 1.00 {
 			lambda = 0.5
 		}
@@ -658,8 +683,33 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 					}
 
 					if shouldMigrate {
-						if migrateRecord(ctx, sourcePool, targetPool, sourceTable, nextTable, r.ID, r.Payload, uNew, r.LastActivity) {
-							migratedCount++
+						targetTier := tier + 1
+						isLocal := false
+
+						configMu.RLock()
+						for _, t := range globalConfig.ActiveTiers {
+							if t == targetTier {
+								isLocal = true
+								break
+							}
+						}
+						configMu.RUnlock()
+
+						if isLocal || tier == 4 {
+							// 1. GANZ NORMAL LOKAL MIGRIEREN
+							if migrateRecord(ctx, sourcePool, targetPool, sourceTable, nextTable, r.ID, r.Payload, uNew, r.LastActivity) {
+								migratedCount++
+							}
+						} else {
+							// 2. EPIDEMIC ROUTING
+							bestPeer := findBestPeer(targetTier)
+							if bestPeer != nil {
+								success := sendToPeer(bestPeer.IP, targetTier, r.ID, r.Payload, uNew, r.LastActivity)
+								if success {
+									sourcePool.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), r.ID)
+									migratedCount++
+								}
+							}
 						}
 					}
 				}
@@ -784,7 +834,6 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("✅ MISSION ACCOMPLISHED.")
 }
 
-// --- HELPERS ---
 func saveConfigToJSON(config SystemConfig) {
 	data, _ := json.MarshalIndent(config, "", "  ")
 	_ = os.WriteFile(CONFIG_FILE, data, 0644)
@@ -857,17 +906,15 @@ func initConfig() {
 			if len(globalConfig.ActiveTiers) == 0 {
 				globalConfig.ActiveTiers = []int{0, 1, 2, 3, 4}
 			}
-			// ----------------------------------
 
 			saveConfigToJSON(globalConfig)
 			return
 		}
 	}
 
-	// Fallback nur, wenn Datei komplett fehlt
 	globalConfig = SystemConfig{
 		RunState:       "IDLE",
-		ActiveTiers:    []int{0, 1, 2, 3, 4}, // <--- NEU: Default Heavy Node
+		ActiveTiers:    []int{0, 1, 2, 3, 4},
 		PID:            PIDConfig{1.5, 0.05, 0.2},
 		Limits:         ResourceLimits{MaxCpuPercent: 50},
 		Capacities:     map[string]int{"table0": 100000},
@@ -997,14 +1044,12 @@ func startMonitoringService(pool *pgxpool.Pool) {
 	caps := globalConfig.Capacities
 	configMu.RUnlock()
 
-	// --- BUGFIX: Schutz vor gelöschter CSV-Datei ---
 	if _, err := os.Stat("yafad_metrics.csv"); os.IsNotExist(err) {
 		fmt.Println("⚠️  yafad_metrics.csv fehlt! Erstelle eine neue Datei mit Headern...")
 		f, _ := os.Create("yafad_metrics.csv")
 		f.WriteString("timestamp,runtime_sec,total_biomass,t0,t1,t2,t3,t4,deep_archive,t0_pct,t1_pct,t2_pct,t3_pct,t4_pct,lambda,phi_diff\n")
 		f.Close()
 	}
-	// -----------------------------------------------
 
 	monCaps := make(map[string]float64)
 	for k, v := range caps {
@@ -1038,12 +1083,139 @@ func startMonitoringService(pool *pgxpool.Pool) {
 	}, getLambda, getSystemState)
 }
 
+// =====================================================================
+// --- GOSSIP PROTOCOL & ZELL-OSMOSE (EPIDEMIC NETWORKING) ---
+// =====================================================================
+
+func startGossipProtocol(ctx context.Context, pool *pgxpool.Pool) {
+	go func() {
+		addr, err := net.ResolveUDPAddr("udp", ":7777")
+		if err != nil {
+			return
+		}
+
+		conn, err := net.ListenUDP("udp", addr)
+		if err != nil {
+			fmt.Println("⚠️  Gossip-Listener failed to start (Port 7777 blocked?):", err)
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 1024)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+				n, remoteAddr, err := conn.ReadFromUDP(buf)
+				if err != nil {
+					continue
+				}
+
+				var hb NodeHeartbeat
+				if err := json.Unmarshal(buf[:n], &hb); err == nil {
+					if hb.NodeID != localNodeID {
+						hb.IP = remoteAddr.IP.String()
+
+						peerMu.Lock()
+						peerTable[hb.NodeID] = hb
+						peerMu.Unlock()
+					}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		conn, err := net.Dial("udp", "255.255.255.255:7777")
+		if err != nil {
+			conn, _ = net.Dial("udp", "224.0.0.1:7777")
+		}
+		if conn != nil {
+			defer conn.Close()
+		}
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				configMu.RLock()
+				activeTiers := globalConfig.ActiveTiers
+				capT0 := globalConfig.Capacities["table0"]
+				configMu.RUnlock()
+
+				var count int
+				_ = pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&count)
+
+				pressure := 0.0
+				if capT0 > 0 {
+					pressure = float64(count) / float64(capT0)
+				}
+
+				hb := NodeHeartbeat{
+					NodeID:    localNodeID,
+					Tiers:     activeTiers,
+					Pressure:  pressure,
+					Timestamp: time.Now(),
+				}
+
+				data, _ := json.Marshal(hb)
+				if conn != nil {
+					conn.Write(data)
+				}
+			}
+		}
+	}()
+
+	fmt.Printf("📡 Gossip Protocol Online. Local Identity: %s\n", localNodeID)
+}
+
+func findBestPeer(targetTier int) *NodeHeartbeat {
+	peerMu.RLock()
+	defer peerMu.RUnlock()
+
+	var bestPeer *NodeHeartbeat
+	minPressure := 999.0
+
+	for _, p := range peerTable {
+		hasTier := false
+		for _, t := range p.Tiers {
+			if t == targetTier {
+				hasTier = true
+				break
+			}
+		}
+		if hasTier && p.Pressure < minPressure && time.Since(p.Timestamp) < 10*time.Second {
+			minPressure = p.Pressure
+			peerCopy := p
+			bestPeer = &peerCopy
+		}
+	}
+	return bestPeer
+}
+
+func sendToPeer(ip string, targetTier int, id string, payload string, u float64, la time.Time) bool {
+	tp := TransferPayload{Tier: targetTier, ID: id, Payload: payload, UtilityIndex: u, LastActivity: la}
+	data, _ := json.Marshal(tp)
+
+	resp, err := http.Post(fmt.Sprintf("http://%s:2112/osmosis", ip), "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200
+}
+
 func startWorkers(ctx context.Context, router *StorageRouter, wg *sync.WaitGroup) {
 	configMu.RLock()
 	tiers := globalConfig.ActiveTiers
 	configMu.RUnlock()
 
-	// Die Standard-PID Werte für die verschiedenen Schichten (werden später dynamisch überschrieben)
 	defaultPIDs := map[int]*PIDController{
 		0: NewPID(1.5, 0.05, 0.2),
 		1: NewPID(1.2, 0.05, 0.2),
@@ -1053,14 +1225,14 @@ func startWorkers(ctx context.Context, router *StorageRouter, wg *sync.WaitGroup
 	}
 
 	for _, tier := range tiers {
-		wg.Add(1) // Dynamisch einen Worker zum WaitGroup hinzufügen
+		wg.Add(1)
 
 		pid, exists := defaultPIDs[tier]
 		if !exists {
-			pid = NewPID(0.5, 0.01, 0.1) // Fallback
+			pid = NewPID(0.5, 0.01, 0.1)
 		}
 
-		t := tier // Shadowing für die Goroutine
+		t := tier
 		go func(workerTier int, workerPID *PIDController) {
 			defer wg.Done()
 			runWorker(ctx, router, workerTier, workerPID)
