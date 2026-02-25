@@ -5,13 +5,13 @@
 ---
 ### 🎥 Watch the Explainer Videos
 
-***🇺🇸🇬🇧 English Version:*** (right-click to open in new tab)
+***🇺🇸🇬🇧 English Version:** (right-click to open in new tab)
 
 <a href="https://www.youtube.com/watch?v=pBhPLxvwYpE">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
 </a>
 
-**🇩🇪 Deutsche Version:**
+***🇩🇪 Deutsche Version:**
 
 <a href="https://www.youtube.com/watch?v=EAv0NE9jy7E">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
@@ -30,7 +30,7 @@ This monumental release transforms YaFaD from a reactive database engine into a 
 * **🛡️ Cryptographic Immune System:** All payloads are now automatically secured with End-to-End AES-256-GCM encryption. Nodes route and sort the data blindly and securely based solely on unencrypted metadata (Utility Index).
 * **🎛️ Refined Mission Control Dashboard:** The Gradio UI has been heavily optimized. The `Target Ratio` is now fully handled by the engine's internal math, and complex Pulse/PID controls are neatly tucked away behind a new **Expert Mode** toggle for a cleaner, presentation-ready interface.
 
-*Watch the machine breathe, learn, and perfectly align millions of records to the Golden Ratio ($\Phi \approx 1.618$)!* 🚀s
+*Watch the machine breathe, learn, and perfectly align millions of records to the Golden Ratio 🚀*
 
 ## 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
 
