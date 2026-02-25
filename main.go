@@ -24,6 +24,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -544,6 +546,111 @@ func main() {
 	}
 }
 
+// --- NEUROPLASTIZITÄT: PID SELBSTOPTIMIERUNG ---
+func optimizePIDParams() {
+	fmt.Println("\n🧠 KONSOLIDIERUNG: Analysiere Zell-Metriken für PID-Tuning...")
+
+	data, err := os.ReadFile("yafad_metrics.csv")
+	if err != nil {
+		fmt.Println("⚠️ Konnte Metriken nicht lesen, überspringe Tuning.")
+		return
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var phiDiffs []float64
+	var t0Pcts []float64
+
+	// Letzte 60 Messpunkte auswerten (ca. die letzten 5 Minuten unter Last)
+	limit := len(lines) - 60
+	if limit < 1 {
+		limit = 1
+	}
+
+	for i := limit; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		cols := strings.Split(lines[i], ",")
+		if len(cols) >= 16 && cols[0] != "timestamp" {
+			t0Pct, _ := strconv.ParseFloat(cols[9], 64)
+			phiDiff, _ := strconv.ParseFloat(cols[15], 64)
+			t0Pcts = append(t0Pcts, t0Pct)
+			phiDiffs = append(phiDiffs, phiDiff)
+		}
+	}
+
+	if len(phiDiffs) == 0 {
+		return
+	}
+
+	// Statistik berechnen
+	var sumPhi, maxT0, minT0 float64
+	minT0 = 999.0
+	for i, val := range phiDiffs {
+		sumPhi += val
+		t0 := t0Pcts[i]
+		if t0 > maxT0 {
+			maxT0 = t0
+		}
+		if t0 < minT0 {
+			minT0 = t0
+		}
+	}
+	avgPhi := sumPhi / float64(len(phiDiffs))
+	oscillation := maxT0 - minT0
+
+	configMu.Lock()
+	kp := globalConfig.PID.Kp
+	ki := globalConfig.PID.Ki
+	kd := globalConfig.PID.Kd
+
+	var changed bool
+
+	// Regel 1: Oszillation (hektisches Atmen) bekämpfen
+	if oscillation > 20.0 {
+		kp *= 0.95 // 5% Weniger aggressiv
+		kd *= 1.10 // 10% Mehr Dämpfung
+		changed = true
+		fmt.Printf("   📉 Hohe Oszillation erkannt (%.1f%%). Erhöhe Dämpfung...\n", oscillation)
+	}
+
+	// Regel 2: Trägheit bekämpfen (Verfehlen des Goldenen Schnitts)
+	if avgPhi > 0.20 && oscillation <= 20.0 {
+		kp *= 1.05 // 5% Aggressiver
+		ki *= 1.02 // Leicht erhöhter Integral-Faktor
+		changed = true
+		fmt.Printf("   🐢 System zu träge (Avg PhiDiff=%.3f). Erhöhe Reaktionsfreudigkeit...\n", avgPhi)
+	}
+
+	// Regel 3: Perfektion
+	if avgPhi <= 0.20 && oscillation <= 20.0 {
+		fmt.Println("   ✨ System lief nah am biologischen Optimum. Keine Änderungen nötig.")
+	}
+
+	// Physikalische Sicherheitsgrenzen (damit das System nicht explodiert)
+	if kp > 3.0 {
+		kp = 3.0
+	}
+	if kp < 0.1 {
+		kp = 0.1
+	}
+	if kd > 1.0 {
+		kd = 1.0
+	}
+	if ki > 0.5 {
+		ki = 0.5
+	}
+
+	if changed {
+		globalConfig.PID.Kp = math.Round(kp*1000) / 1000
+		globalConfig.PID.Ki = math.Round(ki*1000) / 1000
+		globalConfig.PID.Kd = math.Round(kd*1000) / 1000
+		saveConfigToJSON(globalConfig)
+		fmt.Printf("   ✅ Neue PID-Werte gespeichert -> Kp: %.3f | Ki: %.3f | Kd: %.3f\n", globalConfig.PID.Kp, globalConfig.PID.Ki, globalConfig.PID.Kd)
+	}
+	configMu.Unlock()
+}
+
 // --- WORKER LOGIC (Dynamic Buoyancy) ---
 func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDController) {
 	sourceTable := fmt.Sprintf("table%d", tier)
@@ -730,8 +837,18 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 
 // --- INJECTOR ---
 func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
-	fmt.Println("🔨 Compiling Generator...")
-	exec.Command("go", "build", "-o", "yafad_sim", "generator.go").Run()
+	fmt.Println("🔨 Preparing and Compiling Generator...")
+
+	// ---> NEU: Zombie-Prozesse killen und alte Datei löschen, damit 'go build' nicht einfriert!
+	exec.Command("pkill", "-f", "yafad_sim").Run()
+	os.Remove("yafad_sim")
+
+	// Kompilieren mit Fehler-Check
+	errBuild := exec.Command("go", "build", "-o", "yafad_sim", "generator.go").Run()
+	if errBuild != nil {
+		fmt.Printf("❌ Fehler beim Kompilieren des Generators: %v\n", errBuild)
+		return
+	}
 
 	configMu.RLock()
 	done := globalConfig.InjectDone
@@ -739,12 +856,19 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 	batchSize := 10000
 	remaining := total - done
+
+	// ---> NEU: Transparente Ausgabe der Zahlen
+	fmt.Printf("   -> Check: Target=%d | Done=%d | Remaining=%d\n", total, done, remaining)
+
 	if remaining <= 0 {
 		fmt.Println("\n✅ Target already reached. Nothing to inject.")
 		return
 	}
 
 	isDraining := false
+	lastBreathTime := time.Now()
+	lastOptTime := time.Now() // Cooldown für Optimierung
+
 	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records (Remaining: %d)\n", total, remaining)
 
 	for remaining > 0 {
@@ -783,7 +907,21 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 		if !isDraining {
 			if fillPct >= wHigh {
 				isDraining = true
+
+				// ---> BIOLOGISCHES SAHNEHÄUBCHEN: HYPERVENTILATIONS-ERKENNUNG <---
+				breathDuration := time.Since(lastBreathTime)
+				lastBreathTime = time.Now() // Startzeit für den nächsten Atemzug setzen
+
 				fmt.Printf("\n🌊 T0 High Water Mark (%.1f%% >= %.1f%%). Switching to DRAIN Mode.\n", fillPct, wHigh)
+
+				// Wenn die Maschine zu schnell atmet (Oszillation unter 20 Sekunden)
+				// UND wir ihr seit der letzten Optimierung mindestens 60 Sekunden Zeit gegeben haben:
+				if breathDuration < 20*time.Second && time.Since(lastOptTime) > 60*time.Second {
+					fmt.Printf("⚠️ HYPERVENTILATION ERKANNT (Atemzug dauerte nur %v). Leite Notfall-Optimierung ein...\n", breathDuration.Round(time.Second))
+					optimizePIDParams()
+					lastOptTime = time.Now() // Cooldown starten
+				}
+				// -------------------------------------------------------------------
 				continue
 			}
 
@@ -801,6 +939,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 				time.Sleep(1 * time.Second)
 			} else {
 				remaining -= currentBatch
+
 				configMu.Lock()
 				globalConfig.InjectDone += currentBatch
 				saveConfigToJSON(globalConfig)
@@ -826,12 +965,16 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	globalConfig.RunState = "SETTLING"
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
-	time.Sleep(5 * time.Second)
+
+	// Abschließende Optimierung für den "Rest"
+	optimizePIDParams()
+
+	time.Sleep(10 * time.Second)
 	configMu.Lock()
 	globalConfig.RunState = "IDLE"
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
-	fmt.Println("✅ MISSION ACCOMPLISHED.")
+	fmt.Println("✅ MISSION ACCOMPLISHED. Organism is resting.")
 }
 
 func saveConfigToJSON(config SystemConfig) {

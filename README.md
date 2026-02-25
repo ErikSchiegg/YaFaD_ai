@@ -18,14 +18,27 @@
 </a>
 
 ---
+## 🎉 What's New in YaFaD v0.9.2 (The "Neuroplasticity" Update)
 
-# 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
+This monumental release transforms YaFaD from a reactive database engine into a fully autonomous, self-healing organism. By introducing Epidemic Networking and In-Flight Machine Learning, YaFaD now scales and breathes entirely on its own.
+
+### 🧬 Key Biological Upgrades:
+
+* **🧠 In-Flight Neuroplasticity (Real-Time PID Tuning):** YaFaD no longer waits for a mission to end to learn. During massive data injections (e.g., millions of records), the engine analyzes its own `yafad_metrics.csv` every 500,000 records. If it detects inefficiencies, it dynamically adjusts its $Kp$, $Ki$, and $Kd$ parameters on the fly without stopping the data flow.
+* **🫁 Hyperventilation Protection:** The system monitors the "breath duration" (oscillation between high and low watermarks). If the T0-Cortex breathes too frantically (under 20 seconds per cycle), the engine detects *Hyperventilation*, triggers an emergency dampening of the PID values, and enforces a 60-second cooldown period to let the system settle.
+* **🕸️ Epidemic Networking (Gossip Protocol & Osmosis):** YaFaD nodes now have a voice and ears. Using UDP broadcasts (Port 7777), nodes exchange heartbeats and pressure levels. If a lightweight "Edge Node" overflows, it autonomously finds the least-stressed neighbor and "coughs" encrypted payloads over the network via HTTP to maintain the Golden Ratio across servers.
+* **🛡️ Cryptographic Immune System:** All payloads are now automatically secured with End-to-End AES-256-GCM encryption. Nodes route and sort the data blindly and securely based solely on unencrypted metadata (Utility Index).
+* **🎛️ Refined Mission Control Dashboard:** The Gradio UI has been heavily optimized. The `Target Ratio` is now fully handled by the engine's internal math, and complex Pulse/PID controls are neatly tucked away behind a new **Expert Mode** toggle for a cleaner, presentation-ready interface.
+
+*Watch the machine breathe, learn, and perfectly align millions of records to the Golden Ratio ($\Phi \approx 1.618$)!* 🚀s
+
+## 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
 
 Version 0.9.1 marks a massive breakthrough in the YaFaD ecosystem. The system has officially evolved from a theoretical engine into a highly stable, self-regulating data organism
 
 In our latest stress tests, the engine successfully processed and cascaded 5,000,000 records without a single hitch, proving that the biological data-decay model works flawlessly at scale.
 
-## ✨ Highlights of this Release:
+### ✨ Highlights of this Release:
 
 * 🧬 The Perfect Golden Ratio ($\Phi$): YaFaD achieved true mathematical equilibrium. Through pure organic pressure and Lambda-decay, the system automatically distributed 5 million records across 5 tiers, hitting a near-perfect 1.618 ratio between layers (e.g., the T3/T2 ratio landed at exactly ```1.6182```)
 * 🫁 True "Breathing" Architecture: The physical deadlocks are gone. The Cortex (T0) now perfectly handles massive pulse injections by expanding (High Watermark) and naturally exhaling data down the fractal cascade. Once equilibrium is reached, the organism peacefully goes to sleep at 0% CPU load.
@@ -34,7 +47,7 @@ In our latest stress tests, the engine successfully processed and cascaded 5,000
 
 Next Stop: Evolution into a Multi-Organism. We are preparing the network for Epidemic Routing (Gossip Protocol) and End-to-End Payload Encryption, allowing independent YaFaD cells to communicate and offload data across distributed devices! 🕸️
 
-## The Result:
+### The Result:
 A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
 
 ---
