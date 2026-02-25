@@ -69,7 +69,6 @@ def reload_ui_values():
     total_recs = c.get("inject_total", 500000)
     t0 = c.get("t0_hard_limit", 100000)
     cpu = c.get("limits", {}).get("max_cpu_percent", 50)
-    ratio = c.get("target_ratio", 1.0)
     flush = c.get("flush_on_start", False)
     w_high = c.get("watermarks", {}).get("high", 150.0)
     w_low = c.get("watermarks", {}).get("low", 120.0)
@@ -80,7 +79,8 @@ def reload_ui_values():
     grafana = c.get("grafana_url", DEFAULT_GRAFANA)
     vanish = c.get("vanish_threshold", "10m")
     msg = f"🔄 UI Synced from System at {time.strftime('%H:%M:%S')}"
-    return (total_recs, t0, cpu, ratio, flush, t0, w_high, w_low, buoy, kp, ki, kd, grafana, vanish, msg)
+    # Target Ratio wurde hier aus den Rückgabewerten entfernt
+    return (total_recs, t0, cpu, flush, t0, w_high, w_low, buoy, kp, ki, kd, grafana, vanish, msg)
 
 # --- RAM CALC ---
 def calculate_ram_impact(t0_limit, high_mark):
@@ -100,7 +100,6 @@ def update_tuning(t0_req, kp, ki, kd, buoyancy, w_high, w_low):
     conf = get_current_config()
     current_t0 = conf.get("t0_hard_limit", 100000)
     requested_t0 = int(t0_req)
-    # NEU: Das fehlende Bindeglied für die Engine!
     if "capacities" not in conf: conf["capacities"] = {}
     conf["capacities"]["table0"] = requested_t0
     status_prefix = "✅"
@@ -122,7 +121,7 @@ def update_tuning(t0_req, kp, ki, kd, buoyancy, w_high, w_low):
     save_config(conf)
     return f"{status_prefix} | Physics Updated", final_t0
 
-def start_mission(total_recs, t0_limit, cpu_percent, target_ratio, flush_tables, reset_counter):
+def start_mission(total_recs, t0_limit, cpu_percent, flush_tables, reset_counter):
     conf = get_current_config()
     biomass = get_current_biomass()
 
@@ -138,11 +137,9 @@ def start_mission(total_recs, t0_limit, cpu_percent, target_ratio, flush_tables,
 
     conf["inject_total"] = int(total_recs)
     conf["t0_hard_limit"] = int(t0_limit)
-    # NEU: Das fehlende Bindeglied für die Engine!
     if "capacities" not in conf: conf["capacities"] = {}
     conf["capacities"]["table0"] = int(t0_limit)
     conf["limits"] = {"max_cpu_percent": int(cpu_percent)}
-    conf["target_ratio"] = float(target_ratio)
     conf["flush_on_start"] = flush_tables
     conf["run_state"] = "RUNNING"
     save_config(conf)
@@ -223,11 +220,9 @@ def get_status_text():
     if state == "RUNNING": icon = "🟢"
     if state == "IDLE": icon = "🟡"
     
-    # Absolute Target Math Live
     biomass = get_current_biomass()
     target = biomass + (total - done)
     
-    # FIX: Division by Zero abfangen
     if total > 0:
         progress = (done / total) * 100
     else:
@@ -258,7 +253,7 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     n_t0_mission = gr.Number(value=init_conf.get("t0_hard_limit"), label="T0 Capacity (Start)")
                     lbl_ram = gr.Markdown("Calc RAM...")
                     s_cpu = gr.Slider(10, 100, value=init_conf.get("limits", {}).get("max_cpu_percent"), label="CPU Limit %")
-                    s_ratio = gr.Slider(0.5, 2.0, value=init_conf.get("target_ratio"), label="Target Ratio")
+                    
                     with gr.Row():
                         chk_flush = gr.Checkbox(label="Flush Tables (Empty DB)", value=init_conf.get("flush_on_start"))
                         chk_reset = gr.Checkbox(label="Reset Counter (Start at 0)", value=False)
@@ -267,23 +262,39 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                         btn_stop = gr.Button("🛑 ABORT", variant="stop")
                     out_mission = gr.Label(label="Status")
                     
-                    btn_start.click(start_mission, inputs=[n_recs, n_t0_mission, s_cpu, s_ratio, chk_flush, chk_reset], outputs=out_mission)
+                    # Target Ratio aus den Inputs komplett entfernt
+                    btn_start.click(start_mission, inputs=[n_recs, n_t0_mission, s_cpu, chk_flush, chk_reset], outputs=out_mission)
                     btn_stop.click(stop_mission, outputs=out_mission)
 
                 with gr.TabItem("🎛️ Tuning"):
                     gr.Markdown("### Dynamic Architecture")
                     n_t0_tune = gr.Number(value=init_conf.get("t0_hard_limit"), label="T0 Capacity (Live Update)", info="🛡️ Safety Lock Active: Changes are limited to ±25% per update.")
-                    gr.Markdown("### Pulse Control")
-                    w_high = gr.Slider(100, 250, value=init_conf.get("watermarks", {}).get("high"), label="High Watermark (Stop)")
-                    w_low = gr.Slider(50, 200, value=init_conf.get("watermarks", {}).get("low"), label="Low Watermark (Resume)")
-                    s_buoy = gr.Slider(0, 1, value=init_conf.get("buoyancy_factor"), label="Buoyancy")
-                    gr.Markdown("### PID Controller")
-                    pid = init_conf.get("pid_settings", {})
-                    s_kp = gr.Slider(0, 5, value=pid.get("kp"), label="Kp")
-                    s_ki = gr.Slider(0, 1, value=pid.get("ki"), label="Ki")
-                    s_kd = gr.Slider(0, 2, value=pid.get("kd"), label="Kd")
+                    
+                    # --- NEU: EXPERT MODE TOGGLE ---
+                    expert_toggle = gr.Checkbox(label="🧠 Expert Mode (Pulse & PID Control einblenden)", value=False)
+                    
+                    # --- NEU: VERSTECKTER BEREICH ---
+                    with gr.Column(visible=False) as expert_panel:
+                        gr.Markdown("### Pulse Control")
+                        w_high = gr.Slider(100, 250, value=init_conf.get("watermarks", {}).get("high"), label="High Watermark (Stop)")
+                        w_low = gr.Slider(50, 200, value=init_conf.get("watermarks", {}).get("low"), label="Low Watermark (Resume)")
+                        s_buoy = gr.Slider(0, 1, value=init_conf.get("buoyancy_factor"), label="Buoyancy")
+                        
+                        gr.Markdown("### PID Controller")
+                        pid = init_conf.get("pid_settings", {})
+                        s_kp = gr.Slider(0, 5, value=pid.get("kp"), label="Kp")
+                        s_ki = gr.Slider(0, 1, value=pid.get("ki"), label="Ki")
+                        s_kd = gr.Slider(0, 2, value=pid.get("kd"), label="Kd")
+                    
                     btn_tune = gr.Button("Update Live Physics")
                     out_tune = gr.Label()
+                    
+                    # --- NEU: EXPERT MODE LOGIK ---
+                    def toggle_expert(is_expert):
+                        return gr.update(visible=is_expert)
+                        
+                    expert_toggle.change(fn=toggle_expert, inputs=expert_toggle, outputs=expert_panel)
+                    
                     btn_tune.click(update_tuning, inputs=[n_t0_tune, s_kp, s_ki, s_kd, s_buoy, w_high, w_low], outputs=[out_tune, n_t0_tune])
 
                 with gr.TabItem("⚙️ Settings"):
@@ -307,7 +318,9 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     btn_run_mig.click(start_strangler_migration, inputs=[sel_tabs, db_h, db_p, db_u, db_pw, db_n], outputs=stat_mig)
                     btn_kill_mig.click(stop_strangler_migration, outputs=stat_mig)
 
-    btn_refresh_all.click(reload_ui_values, inputs=None, outputs=[n_recs, n_t0_mission, s_cpu, s_ratio, chk_flush, n_t0_tune, w_high, w_low, s_buoy, s_kp, s_ki, s_kd, txt_grafana, t_vanish, out_mission])
+    # Target Ratio aus den Outputs des UI-Syncs komplett entfernt
+    btn_refresh_all.click(reload_ui_values, inputs=None, outputs=[n_recs, n_t0_mission, s_cpu, chk_flush, n_t0_tune, w_high, w_low, s_buoy, s_kp, s_ki, s_kd, txt_grafana, t_vanish, out_mission])
+    
     n_t0_mission.change(calculate_ram_impact, inputs=[n_t0_mission, w_high], outputs=lbl_ram)
     n_t0_tune.change(calculate_ram_impact, inputs=[n_t0_tune, w_high], outputs=lbl_ram)
     w_high.change(calculate_ram_impact, inputs=[n_t0_tune, w_high], outputs=lbl_ram)
