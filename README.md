@@ -7,12 +7,15 @@
 
 **🇬🇧 English Version:** (right-click to open in new tab)
 
-[![YaFaD English](https://img.youtube.com/vi/pBhPLxvwYpE/maxresdefault.jpg)](https://www.youtube.com/watch?v=pBhPLxvwYpE)
-
+<a href="https://www.youtube.com/watch?v=pBhPLxvwYpE">
+  <img src="assets/logo.png" alt="YaFaD English" width="15%">
+</a>
 
 **🇩🇪 Deutsche Version:**
 
-[![YaFaD Deutsch](https://img.youtube.com/vi/EAv0NE9jy7E/maxresdefault.jpg)](https://www.youtube.com/watch?v=EAv0NE9jy7E)
+<a href="https://www.youtube.com/watch?v=EAv0NE9jy7E">
+  <img src="assets/logo.png" alt="YaFaD English" width="15%">
+</a>
 
 ---
 
