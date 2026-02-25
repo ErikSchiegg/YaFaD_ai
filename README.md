@@ -3,6 +3,18 @@
 **YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. Instead of treating data as static entries, YaFaD treats it as **dynamic memory**, using biological principles to predictively accelerate access and optimize infrastructure costs.
 
 ---
+### 🎥 Watch the Explainer Videos
+
+**🇬🇧 English Version:**
+
+[![YaFaD English](https://img.youtube.com/vi/pBhPLxvwYpE/maxresdefault.jpg)](https://www.youtube.com/watch?v=pBhPLxvwYpE)
+
+
+**🇩🇪 Deutsche Version:**
+
+[![YaFaD Deutsch](https://img.youtube.com/vi/EAv0NE9jy7E/maxresdefault.jpg)](https://www.youtube.com/watch?v=EAv0NE9jy7E)
+
+---
 
 # 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
 
