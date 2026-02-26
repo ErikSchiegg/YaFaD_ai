@@ -466,6 +466,7 @@ func main() {
 
 	startMonitoringService(hotPool)
 	go launchDashboard()
+	go runEquilibriumSmoother(ctx, router)
 
 	ticker := time.NewTicker(1 * time.Second)
 	workersStarted := false
@@ -674,12 +675,19 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 
 		configMu.RLock()
 		pidParams := globalConfig.PID
-		capacity := globalConfig.Capacities[sourceTable]
+		t0Cap := globalConfig.Capacities["table0"]
+		if t0Cap <= 0 {
+			t0Cap = 100000
+		}
 		targetRatio := globalConfig.TargetRatio
 		vanishStr := globalConfig.VanishThreshold
 		runState := globalConfig.RunState
 		userBuoyancy := globalConfig.BuoyancyFactor
 		configMu.RUnlock()
+
+		// ---> NEU: Dynamische Fibonacci-Kapazität <---
+		// Ignoriert alte Werte aus der Config und erzwingt den perfekten Goldenen Schnitt!
+		capacity := int(float64(t0Cap) * math.Pow(PHI, float64(tier)))
 
 		vanishDur, _ := time.ParseDuration(vanishStr)
 		if vanishDur == 0 {
@@ -762,7 +770,15 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		}
 
 		if count > 0 {
-			rows, err := sourcePool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000", sourceTable))
+			// ---> NEU: Biologischer Radar-Sweep (Ohne extra Import!) <---
+			randOffset := 0
+			if count > 2000 {
+				// Wir nutzen einfach die Nanosekunden der Uhrzeit als Zufallsgenerator
+				randOffset = int(time.Now().UnixNano() % int64(count-1000))
+			}
+
+			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000 OFFSET %d", sourceTable, randOffset)
+			rows, err := sourcePool.Query(ctx, query)
 			if err == nil {
 				var batch []Record
 				for rows.Next() {
@@ -784,8 +800,14 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 							shouldMigrate = true
 						}
 					} else {
-						if (uNew < 0.4 && lambda > 0.001) || pressure > 1.00 {
+						// ---> NEU: Nur noch das Überdruck-Ventil (Der Heavy Lifter) <---
+						if pressure >= 0.99 {
+							// Tabelle ist brechend voll. Ventil aufreißen!
 							shouldMigrate = true
+						} else {
+							// Tabelle hat noch Platz.
+							// Wir halten das Ventil zu und lassen den "Smoother" später die Feinarbeit machen.
+							shouldMigrate = false
 						}
 					}
 
@@ -1352,6 +1374,77 @@ func sendToPeer(ip string, targetTier int, id string, payload string, u float64,
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == 200
+}
+
+// --- THE EQUILIBRIUM SMOOTHER (Golden Ratio Massager) ---
+func runEquilibriumSmoother(ctx context.Context, router *StorageRouter) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			configMu.RLock()
+			runState := globalConfig.RunState
+			targetRatio := globalConfig.TargetRatio
+			configMu.RUnlock()
+
+			// Der Smoother arbeitet NUR, wenn nicht gerade ein wilder Inject/Migration läuft
+			if runState == "RUNNING" {
+				continue
+			}
+
+			// Wir glätten von oben nach unten (T0->T1, T1->T2, T2->T3, T3->T4)
+			for tier := 0; tier < 4; tier++ {
+				sourceTable := fmt.Sprintf("table%d", tier)
+				nextTable := fmt.Sprintf("table%d", tier+1)
+
+				sourcePool := router.GetPool(tier)
+				targetPool := router.GetPool(tier + 1)
+
+				var countCurrent, countNext int
+				sourcePool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&countCurrent)
+				targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", nextTable)).Scan(&countNext)
+
+				if countCurrent == 0 {
+					continue // Nichts zu glätten
+				}
+
+				// Wie viele Daten SOLLTEN im nächsten Tier sein, basierend auf dem aktuellen Tier?
+				// Ziel: countNext = countCurrent * TargetRatio (z.B. 1.618)
+				targetNextCount := float64(countCurrent) * targetRatio
+
+				// Wenn das nächste Tier "zu leer" ist (weniger als 90% vom Idealwert)
+				if float64(countNext) < targetNextCount*0.90 {
+
+					// Berechne, wie viel wir sanft rüberschieben müssen
+					deficit := int(targetNextCount) - countNext
+					if deficit > 5000 {
+						deficit = 5000
+					} // Chunking für flüssige UI
+
+					// Wir verschieben die "ältesten" (geringster Utility Index) Daten, um Platz zu machen
+					if deficit > 0 {
+						fmt.Printf("🧘 Smoother: Massaging %d records from %s -> %s to reach Phi...\n", deficit, sourceTable, nextTable)
+
+						// Schneller Batch-Move der ältesten Records (Sortiert nach utility_index)
+						query := fmt.Sprintf(`
+                            WITH moved AS (
+                                DELETE FROM %s 
+                                WHERE id IN (SELECT id FROM %s ORDER BY utility_index ASC LIMIT %d) 
+                                RETURNING *
+                            )
+                            INSERT INTO %s SELECT * FROM moved ON CONFLICT DO NOTHING;
+                        `, sourceTable, sourceTable, deficit, nextTable)
+
+						sourcePool.Exec(ctx, query)
+					}
+				}
+			}
+		}
+	}
 }
 
 func startWorkers(ctx context.Context, router *StorageRouter, wg *sync.WaitGroup) {

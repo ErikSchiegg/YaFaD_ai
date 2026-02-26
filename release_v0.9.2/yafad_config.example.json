@@ -1,0 +1,38 @@
+{
+  "run_state": "RUNNING",
+  "inject_total": 2000000,
+  "inject_done": 190000,
+  "t0_hard_limit": 180000,
+  "active_tiers": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "capacities": {
+    "table0": 180000,
+    "table1": 566311,
+    "table2": 916311,
+    "table3": 1482623,
+    "table4": 2398935
+  },
+  "target_ratio": 1,
+  "flush_on_start": false,
+  "buoyancy_factor": 0.85,
+  "watermarks": {
+    "high": 150,
+    "low": 110
+  },
+  "sniffer_active": true,
+  "vanish_threshold": "20m",
+  "pid_settings": {
+    "kp": 1.715,
+    "ki": 0.1,
+    "kd": 0.266
+  },
+  "limits": {
+    "max_cpu_percent": 75
+  },
+  "last_updated": "2026-02-19T22:13:57Z"
+}

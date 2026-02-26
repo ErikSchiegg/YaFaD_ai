@@ -9,7 +9,7 @@ import subprocess
 CONFIG_FILE = "yafad_config.json"
 METRICS_FILE = "yafad_metrics.csv"
 DASHBOARD_PORT = 7888
-DEFAULT_GRAFANA = "http://localhost:3000/d/yafad-main"
+DEFAULT_GRAFANA = "http://localhost:3030/d/adf7cqm/yafad-ai-biomass-tiers?orgId=1&from=now-90m&to=now&timezone=browser&refresh=5s&tab=queries"
 
 PROXY_PROCESS = None
 
@@ -121,11 +121,23 @@ def update_tuning(t0_req, kp, ki, kd, buoyancy, w_high, w_low):
     save_config(conf)
     return f"{status_prefix} | Physics Updated", final_t0
 
-def start_mission(total_recs, t0_limit, cpu_percent, flush_tables, reset_counter):
+def start_mission(total_recs, t0_limit, cpu_percent, run_mode):
     conf = get_current_config()
     biomass = get_current_biomass()
 
-    if flush_tables: biomass = 0
+    # Logik aus dem Radio-Button ableiten
+    flush_tables = False
+    reset_counter = False
+    
+    if run_mode == "🧪 New Test Run (Flush DB & Reset)":
+        flush_tables = True
+        reset_counter = True
+    elif run_mode == "➕ Add Records (Keep Data)":
+        flush_tables = False
+        reset_counter = True
+
+    if flush_tables: 
+        biomass = 0
 
     if reset_counter:
         conf["inject_done"] = 0
@@ -190,9 +202,9 @@ def start_strangler_migration(target_tables, host, port, user, pw, db):
     with open("migration_policy.json", "w") as f: json.dump(config, f, indent=4)
     if PROXY_PROCESS: return "⚠️ Proxy already running."
     try:
-        cmd = ["go", "run", "user_simulator.go", "yafad_proxy.go"]
+        cmd = ["go", "run", "yafad_proxy.go"]
         PROXY_PROCESS = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=os.getcwd())
-        return f"🚀 Proxy & Simulator STARTED (PID: {PROXY_PROCESS.pid})"
+        return f"🚀 Proxy STARTED (PID: {PROXY_PROCESS.pid})"
     except Exception as e: return f"❌ Start failed: {e}"
 
 def stop_strangler_migration():
@@ -234,8 +246,14 @@ def get_status_text():
 with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
     init_conf = get_current_config()
     
-    with gr.Row():
-        gr.Markdown("## 🦁 YaFaD v0.9.3 Mission Control")
+    with gr.Row(equal_height=True):
+        gr.Image(
+            value="assets/Mission_control_logo.png", 
+            show_label=False,
+            container=False, 
+            interactive=False, 
+            height=110
+        )
         btn_refresh_all = gr.Button("🔄 Sync UI from System", variant="secondary", size="sm")
 
     with gr.Row():
@@ -255,15 +273,19 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     s_cpu = gr.Slider(10, 100, value=init_conf.get("limits", {}).get("max_cpu_percent"), label="CPU Limit %")
                     
                     with gr.Row():
-                        chk_flush = gr.Checkbox(label="Flush Tables (Empty DB)", value=init_conf.get("flush_on_start"))
-                        chk_reset = gr.Checkbox(label="Reset Counter (Start at 0)", value=False)
+                        # HIER wird radio_mode definiert!
+                        radio_mode = gr.Radio(
+                            choices=["🧪 New Test Run (Flush DB & Reset)", "➕ Add Records (Keep Data)"], 
+                            value="🧪 New Test Run (Flush DB & Reset)", 
+                            label="Mission Type"
+                        )
                     with gr.Row():
                         btn_start = gr.Button("🔥 IGNITION", variant="primary")
                         btn_stop = gr.Button("🛑 ABORT", variant="stop")
                     out_mission = gr.Label(label="Status")
                     
-                    # Target Ratio aus den Inputs komplett entfernt
-                    btn_start.click(start_mission, inputs=[n_recs, n_t0_mission, s_cpu, chk_flush, chk_reset], outputs=out_mission)
+                    # Hier wird radio_mode verwendet
+                    btn_start.click(start_mission, inputs=[n_recs, n_t0_mission, s_cpu, radio_mode], outputs=out_mission)
                     btn_stop.click(stop_mission, outputs=out_mission)
 
                 with gr.TabItem("🎛️ Tuning"):
@@ -319,7 +341,7 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     btn_kill_mig.click(stop_strangler_migration, outputs=stat_mig)
 
     # Target Ratio aus den Outputs des UI-Syncs komplett entfernt
-    btn_refresh_all.click(reload_ui_values, inputs=None, outputs=[n_recs, n_t0_mission, s_cpu, chk_flush, n_t0_tune, w_high, w_low, s_buoy, s_kp, s_ki, s_kd, txt_grafana, t_vanish, out_mission])
+    btn_refresh_all.click(reload_ui_values, inputs=None, outputs=[n_recs, n_t0_mission, s_cpu, n_t0_tune, w_high, w_low, s_buoy, s_kp, s_ki, s_kd, txt_grafana, t_vanish, out_mission])
     
     n_t0_mission.change(calculate_ram_impact, inputs=[n_t0_mission, w_high], outputs=lbl_ram)
     n_t0_tune.change(calculate_ram_impact, inputs=[n_t0_tune, w_high], outputs=lbl_ram)

@@ -1,98 +1,138 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"math/rand"
 	"os"
+	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Config Struktur für die JSON Policy
-type MigrationConfig struct {
-	Mode      string   `json:"mode"`
-	LegacyDB  DBConfig `json:"legacy_db"`
-	Whitelist []string `json:"yafad_whitelist"` // Tabellen, die YaFaD gehören
+type MigrationPolicy struct {
+	Mode           string                 `json:"mode"`
+	LegacyDB       map[string]interface{} `json:"legacy_db"`
+	YaFaDWhitelist []interface{}          `json:"yafad_whitelist"`
 }
 
-type DBConfig struct {
-	Host     string `json:"host"`
-	Port     string `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	DBName   string `json:"dbname"`
-}
-
-type Proxy struct {
-	Config     MigrationConfig
-	LegacyConn *sql.DB
-	YaFaDConn  *sql.DB // Verbindung zum internen YaFaD (oder direkt Funktionsaufruf)
-}
-
-func NewProxy() *Proxy {
-	// 1. Lade Config
-	file, err := os.ReadFile("migration_policy.json")
-	if err != nil {
-		log.Println("⚠️ No migration policy found. Defaulting to Standalone Mode.")
-		return &Proxy{}
-	}
-
-	var cfg MigrationConfig
-	json.Unmarshal(file, &cfg)
-
-	// 2. Verbinde zur Legacy DB
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.LegacyDB.Host, cfg.LegacyDB.Port, cfg.LegacyDB.User, cfg.LegacyDB.Password, cfg.LegacyDB.DBName)
-
-	legacyDb, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Printf("❌ Failed to connect to Legacy DB: %v", err)
-	} else {
-		fmt.Println("🔌 Connected to Legacy System.")
-	}
-
-	return &Proxy{
-		Config:     cfg,
-		LegacyConn: legacyDb,
-	}
-}
-
-// RouteQuery entscheidet: Wer bekommt die Anfrage?
-// Dies ist eine vereinfachte Router-Logik.
-func (p *Proxy) HandleRequest(table string, operation string, data string) {
-	target := "LEGACY"
-
-	// Check Whitelist (Strangler Pattern)
-	for _, t := range p.Config.Whitelist {
-		if t == table {
-			target = "YAFAD"
-			break
+// Kleiner, eigener Simulator nur für die Migration
+func startLegacyTraffic(tables []interface{}) {
+	fmt.Println("🤖 LEGACY APP: Simulating normal user traffic during migration...")
+	for {
+		time.Sleep(time.Duration(rand.Intn(2000)+500) * time.Millisecond)
+		if len(tables) > 0 {
+			target := tables[rand.Intn(len(tables))].(string)
+			fmt.Printf("   [Traffic] Routine read/write operation on '%s'\n", target)
 		}
 	}
-
-	if target == "YAFAD" {
-		p.routeToYaFaD(table, operation, data)
-	} else {
-		p.routeToLegacy(table, operation, data)
-	}
 }
 
-func (p *Proxy) routeToYaFaD(table string, op string, data string) {
-	// Hier würde der Aufruf an den YaFaD Core (Cortex) gehen
-	// Z.B. via Channel oder Funktionsaufruf in main.go
-	fmt.Printf("🦁 [PROXY -> YAFAD] Handling '%s' on table '%s' (Optimized Storage)\n", op, table)
-	// Code to inject into YaFaD ingest loop...
-}
+func main() {
+	fmt.Println("🌿 STRANGLER FIG PROXY INITIALIZING...")
 
-func (p *Proxy) routeToLegacy(table string, op string, data string) {
-	if p.LegacyConn == nil {
-		fmt.Println("❌ Error: Legacy DB not connected.")
+	// 1. Policy vom Dashboard lesen
+	policyData, err := os.ReadFile("migration_policy.json")
+	if err != nil {
+		fmt.Printf("❌ Cannot read policy (Start Proxy from Dashboard first!): %v\n", err)
 		return
 	}
-	fmt.Printf("👵 [PROXY -> LEGACY] Passthrough '%s' on table '%s'\n", op, table)
 
-	// Realer SQL Durchstich zur alten DB
-	// _, err := p.LegacyConn.Exec("INSERT INTO ...", ...)
+	var policy MigrationPolicy
+	json.Unmarshal(policyData, &policy)
+
+	// 2. Kleinen Legacy-Traffic im Hintergrund starten
+	go startLegacyTraffic(policy.YaFaDWhitelist)
+
+	// 3. Verbindung zu Legacy DB aufbauen
+	db := policy.LegacyDB
+	legacyConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		db["user"], db["password"], db["host"], db["port"], db["dbname"])
+
+	ctx := context.Background()
+	legacyPool, err := pgxpool.New(ctx, legacyConnStr)
+	if err != nil {
+		fmt.Printf("❌ Legacy DB connection failed: %v\n", err)
+		return
+	}
+	defer legacyPool.Close()
+
+	// 4. Verbindung zu YaFaD (T0 Cortex)
+	yafadConnStr := "postgres://eriks:test@localhost:5432/yafad_test?sslmode=disable"
+	yafadPool, err := pgxpool.New(ctx, yafadConnStr)
+	if err != nil {
+		fmt.Printf("❌ YaFaD DB connection failed: %v\n", err)
+		return
+	}
+	defer yafadPool.Close()
+
+	fmt.Println("✅ Proxy connected to both dimensions. Starting Osmosis...")
+
+	// 5. Tabellen absaugen und injizieren
+	for _, tableName := range policy.YaFaDWhitelist {
+		table := tableName.(string)
+		fmt.Printf("\n🩸 OSMOSIS ACTIVE: Draining table '%s'...\n", table)
+
+		rows, err := legacyPool.Query(ctx, fmt.Sprintf("SELECT * FROM %s", table))
+		if err != nil {
+			fmt.Printf("⚠️ Could not read %s: %v\n", table, err)
+			continue
+		}
+
+		fieldDescriptions := rows.FieldDescriptions()
+		var columns []string
+		for _, fd := range fieldDescriptions {
+			columns = append(columns, string(fd.Name))
+		}
+
+		count := 0
+		var batch [][]interface{}
+
+		for rows.Next() {
+			values, _ := rows.Values()
+			recordMap := make(map[string]interface{})
+			for i, col := range columns {
+				recordMap[col] = values[i]
+			}
+			recordMap["_legacy_source_table"] = table
+
+			payloadJSON, _ := json.Marshal(recordMap)
+			cellID := uuid.New().String()
+			utilityIndex := rand.Float64()
+
+			batch = append(batch, []interface{}{cellID, payloadJSON, utilityIndex, time.Now()})
+			count++
+
+			// Alle 5000 Records injizieren
+			if len(batch) >= 5000 {
+				_, err = yafadPool.CopyFrom(
+					ctx,
+					pgx.Identifier{"table0"},
+					[]string{"id", "payload", "utility_index", "last_activity"},
+					pgx.CopyFromRows(batch),
+				)
+				if err != nil {
+					fmt.Printf("❌ Injection error: %v\n", err)
+				}
+				fmt.Printf("   💉 Injected %d records from %s into YaFaD T0...\n", count, table)
+				batch = nil
+				time.Sleep(200 * time.Millisecond) // Kleiner Atemzug
+			}
+		}
+
+		// Den Rest injizieren
+		if len(batch) > 0 {
+			yafadPool.CopyFrom(ctx, pgx.Identifier{"table0"}, []string{"id", "payload", "utility_index", "last_activity"}, pgx.CopyFromRows(batch))
+			fmt.Printf("   💉 Injected final records (%d total) from %s into YaFaD T0...\n", count, table)
+		}
+		rows.Close()
+	}
+
+	fmt.Println("\n🏁 MIGRATION COMPLETE. Legacy database fully drained into YaFaD.")
+	fmt.Println("🛑 Proxy will stay alive to route any stragglers. Press Stop Proxy in Dashboard to terminate.")
+
+	select {} // Hält den Proxy am Leben
 }
