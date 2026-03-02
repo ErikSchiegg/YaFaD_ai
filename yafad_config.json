@@ -1,8 +1,8 @@
 {
-  "run_state": "IDLE",
-  "inject_total": 50000,
-  "inject_done": 50000,
-  "t0_hard_limit": 180000,
+  "run_state": "RUNNING",
+  "inject_total": 0,
+  "inject_done": 0,
+  "t0_hard_limit": 100000,
   "active_tiers": [
     0,
     1,
@@ -11,7 +11,7 @@
     4
   ],
   "capacities": {
-    "table0": 180000,
+    "table0": 100000,
     "table1": 566311,
     "table2": 916311,
     "table3": 1482623,
@@ -19,20 +19,20 @@
   },
   "target_ratio": 1,
   "flush_on_start": false,
-  "buoyancy_factor": 0.836,
+  "buoyancy_factor": 0.85,
   "watermarks": {
-    "high": 146.70602411938654,
-    "low": 109.01180723581759
+    "high": 150,
+    "low": 110
   },
   "sniffer_active": true,
   "vanish_threshold": "20m",
   "pid_settings": {
-    "kp": 1.463,
-    "ki": 0.104,
-    "kd": 0.428
+    "kp": 1.129,
+    "ki": 0.106,
+    "kd": 0.759
   },
   "limits": {
-    "max_cpu_percent": 80
+    "max_cpu_percent": 50
   },
   "last_updated": "2026-02-19T22:13:57Z"
 }
