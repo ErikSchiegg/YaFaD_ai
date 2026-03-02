@@ -1,0 +1,18 @@
+{
+    "mode": "strangler_fig",
+    "legacy_db": {
+        "host": "localhost",
+        "port": "5432",
+        "user": "legacy_user_7279",
+        "password": "pass_7279_secure",
+        "dbname": "legacy_crm_7279"
+    },
+    "yafad_whitelist": [
+        "customers",
+        "orders",
+        "system_logs"
+    ],
+    "t0_cap": 100000,
+    "flush_on_start": true,
+    "truncate_legacy_after": true
+}

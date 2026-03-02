@@ -33,7 +33,7 @@ var (
 	colCache  = lipgloss.Color("#4CC9F0")
 	colCold   = lipgloss.Color("#4895EF")
 	colText   = lipgloss.Color("#E0E0E0")
-	colGray   = lipgloss.Color("#3A3A3A")
+	colGray   = lipgloss.Color("#A0A0A0")
 	colGreen  = lipgloss.Color("#43BF6D")
 	colWarn   = lipgloss.Color("#F5A623")
 	colDanger = lipgloss.Color("#D0021B")
@@ -58,9 +58,7 @@ const (
 	stateInputRecords
 	stateInputT0
 	stateInputCPU
-	stateInputRatio
-	stateToggleFlush
-	stateToggleReset
+	stateChooseMode
 	stateConfirm
 	stateAbortConfirm
 	stateTuneT0
@@ -84,9 +82,7 @@ type model struct {
 	wizRecords string
 	wizT0      string
 	wizCPU     string
-	wizRatio   string
-	wizFlush   bool
-	wizReset   bool
+	wizMode    int // 1 = New Run (Flush), 2 = Add Records
 
 	wizTuneT0    string
 	wizTuneKp    string
@@ -109,6 +105,7 @@ type MetricsData struct {
 	T1, T2      string
 	T3, T4      string
 	Deep        string
+	PhiDiff     float64 // NEU: Um zu sehen, ob der Smoother arbeitet
 }
 
 type ConfigData struct {
@@ -117,7 +114,6 @@ type ConfigData struct {
 	InjectDone  int
 	T0Limit     int
 	CPU         int
-	TargetRatio float64
 	Kp          float64
 	Ki          float64
 	Kd          float64
@@ -199,7 +195,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			isTextInputState := m.state >= stateInputRecords && m.state <= stateInputRatio || m.state >= stateTuneT0 && m.state <= stateTuneWLow
+			// Modus-Auswahl (1 oder 2)
+			if m.state == stateChooseMode {
+				switch key {
+				case "1":
+					m.wizMode = 1
+					m.state = stateConfirm
+				case "2":
+					m.wizMode = 2
+					m.state = stateConfirm
+				}
+				return m, nil
+			}
+
+			isTextInputState := m.state >= stateInputRecords && m.state <= stateInputCPU || m.state >= stateTuneT0 && m.state <= stateTuneWLow
 			if isTextInputState {
 				if key == "enter" {
 					switch m.state {
@@ -213,11 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.textInput.SetValue(m.wizCPU)
 					case stateInputCPU:
 						m.wizCPU = m.textInput.Value()
-						m.state = stateInputRatio
-						m.textInput.SetValue(m.wizRatio)
-					case stateInputRatio:
-						m.wizRatio = m.textInput.Value()
-						m.state = stateToggleFlush
+						m.state = stateChooseMode // Gehe zur neuen Auswahl
 					case stateTuneT0:
 						m.wizTuneT0 = m.textInput.Value()
 						m.state = stateTuneKp
@@ -250,28 +255,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.textInput, cmd = m.textInput.Update(msg)
 				return m, cmd
-			}
-
-			if m.state == stateToggleFlush || m.state == stateToggleReset {
-				switch key {
-				case "y", "Y":
-					if m.state == stateToggleFlush {
-						m.wizFlush = true
-						m.state = stateToggleReset
-					} else {
-						m.wizReset = true
-						m.state = stateConfirm
-					}
-				case "n", "N", "enter":
-					if m.state == stateToggleFlush {
-						m.wizFlush = false
-						m.state = stateToggleReset
-					} else {
-						m.wizReset = false
-						m.state = stateConfirm
-					}
-				}
-				return m, nil
 			}
 
 			if m.state == stateConfirm || m.state == stateTuneConfirm {
@@ -310,7 +293,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		metrics, err := readMetrics()
 		if err == nil {
 			m.metrics = metrics
-			m.err = nil // <--- DER WICHTIGE BUGFIX: Löst den Lock
+			m.err = nil
 		} else {
 			m.err = err
 		}
@@ -340,12 +323,6 @@ func (m *model) loadConfigDefaults() error {
 	if c.CPU == 0 {
 		m.wizCPU = "50"
 	}
-	m.wizRatio = fmt.Sprintf("%.1f", c.TargetRatio)
-	if c.TargetRatio == 0 {
-		m.wizRatio = "1.0"
-	}
-	m.wizFlush = false
-	m.wizReset = false
 	return nil
 }
 
@@ -386,9 +363,6 @@ func readConfigQuick() (ConfigData, error) {
 	if v, ok := raw["t0_hard_limit"].(float64); ok {
 		c.T0Limit = int(v)
 	}
-	if v, ok := raw["target_ratio"].(float64); ok {
-		c.TargetRatio = v
-	}
 
 	if limits, ok := raw["limits"].(map[string]interface{}); ok {
 		if cpu, ok := limits["max_cpu_percent"].(float64); ok {
@@ -424,18 +398,29 @@ func sendStartSignal(m model) error {
 	file, _ := os.ReadFile(CONFIG_FILE)
 	var config map[string]interface{}
 	json.Unmarshal(file, &config)
+
 	config["run_state"] = "RUNNING"
 	config["inject_total"], _ = strconv.Atoi(m.wizRecords)
 	config["t0_hard_limit"], _ = strconv.Atoi(m.wizT0)
-	config["target_ratio"], _ = strconv.ParseFloat(m.wizRatio, 64)
+
+	if _, ok := config["capacities"]; !ok {
+		config["capacities"] = map[string]interface{}{}
+	}
+	caps := config["capacities"].(map[string]interface{})
+	caps["table0"], _ = strconv.Atoi(m.wizT0)
+
 	cpu, _ := strconv.Atoi(m.wizCPU)
 	config["limits"] = map[string]interface{}{"max_cpu_percent": cpu}
-	if m.wizFlush {
+
+	// Modus 1: Neues Projekt (Flush) vs Modus 2: Add Records
+	if m.wizMode == 1 {
 		config["flush_on_start"] = true
-	}
-	if m.wizReset {
 		config["inject_done"] = 0
+	} else {
+		config["flush_on_start"] = false
+		config["inject_done"] = 0 // Wir fangen bei Add Records auch wieder bei 0 an zu zählen
 	}
+
 	data, _ := json.MarshalIndent(config, "", "  ")
 	return os.WriteFile(CONFIG_FILE, data, 0644)
 }
@@ -449,6 +434,12 @@ func sendTuneSignal(m model) error {
 	kp, _ := strconv.ParseFloat(m.wizTuneKp, 64)
 	ki, _ := strconv.ParseFloat(m.wizTuneKi, 64)
 	kd, _ := strconv.ParseFloat(m.wizTuneKd, 64)
+
+	if _, ok := config["capacities"]; !ok {
+		config["capacities"] = map[string]interface{}{}
+	}
+	caps := config["capacities"].(map[string]interface{})
+	caps["table0"] = t0
 
 	if _, ok := config["pid_settings"]; !ok {
 		config["pid_settings"] = map[string]interface{}{}
@@ -490,14 +481,20 @@ func (m model) View() string {
 	if m.ticks%2 == 0 {
 		heartbeat = "○"
 	}
+
 	statusText := "IDLE"
 	statusColor := colGray
+
 	if m.config.RunState == "RUNNING" {
 		statusText = "INJECTING"
 		statusColor = colGreen
 	} else if m.config.RunState == "STOPPED" {
 		statusText = "STOPPED"
 		statusColor = colDanger
+	} else if m.metrics.PhiDiff > 0.1 && m.config.RunState != "RUNNING" {
+		// NEU: Zeige an, wenn der Smoother im Hintergrund repariert!
+		statusText = "🧬 REGENERATING"
+		statusColor = colDream
 	}
 
 	targetAbs := m.metrics.Biomass_Raw + int64(m.config.InjectTotal) - int64(m.config.InjectDone)
@@ -542,7 +539,7 @@ func (m model) View() string {
 	l2 := renderMiniBlock("T2 (Dream)", m.metrics.T2, colDream)
 	l3 := renderMiniBlock("T3 (Fade)", m.metrics.T3, colCache)
 	l4 := renderMiniBlock("T4 (Fade)", m.metrics.T4, colCache)
-	fractalPanel := panelStyle.Copy().BorderForeground(colDream).Render(lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colDream).Bold(true).Render("🕸️ FRACTAL DECAY LAYERS"), lipgloss.JoinHorizontal(lipgloss.Top, l1, l2), lipgloss.JoinHorizontal(lipgloss.Top, l3, l4)))
+	fractalPanel := panelStyle.Copy().BorderForeground(colDream).Render(lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colDream).Bold(true).Render(fmt.Sprintf("🕸️ FRACTAL DECAY LAYERS (Phi Diff: %.2f)", m.metrics.PhiDiff)), lipgloss.JoinHorizontal(lipgloss.Top, l1, l2), lipgloss.JoinHorizontal(lipgloss.Top, l3, l4)))
 
 	deepPanel := panelStyle.Copy().BorderForeground(colCold).Render(lipgloss.JoinHorizontal(lipgloss.Left, lipgloss.NewStyle().Foreground(colCold).Bold(true).Width(20).Render("💾 DEEP ARCHIVE"), statValueStyle.Render(m.metrics.Deep+" records secured")))
 
@@ -569,12 +566,8 @@ func (m model) viewWizard() string {
 		title, prompt = "SET T0 CAPACITY (Cortex Limit)", "T0 Size:"
 	case stateInputCPU:
 		title, prompt = "SET CPU THROTTLE (Percent)", "Max CPU %:"
-	case stateInputRatio:
-		title, prompt = "SET FRACTAL RATIO (Phi Target)", "Ratio:"
-	case stateToggleFlush:
-		title, prompt = "FLUSH TABLES? (Empty DB on start)", "[Y] Yes  /  [N] No"
-	case stateToggleReset:
-		title, prompt = "RESET COUNTER? (Start Progress at 0)", "[Y] Yes  /  [N] No"
+	case stateChooseMode:
+		title, prompt = "SELECT MISSION TYPE", "[1] New Test Run (Flush DB)  /  [2] Add Records"
 	case stateTuneT0:
 		title, prompt = "🎛️ TUNE: T0 Capacity (Hard Limit)", "T0 Limit:"
 	case stateTuneKp:
@@ -590,14 +583,18 @@ func (m model) viewWizard() string {
 	case stateTuneWLow:
 		title, prompt = "🎛️ TUNE: Low Watermark (%)", "Low Mark:"
 	case stateConfirm:
-		summary := fmt.Sprintf("Please Confirm Launch Parameters:\n\n • Inject Amount:  %s\n • T0 Capacity:    %s\n • CPU Limit:      %s%%\n • Fractal Ratio:  %s\n • Flush Tables:   %v\n • Reset Counter:  %v\n\nPRESS [ENTER] TO IGNITE  or  [ESC] TO CANCEL", m.wizRecords, m.wizT0, m.wizCPU, m.wizRatio, m.wizFlush, m.wizReset)
+		modeStr := "Add Records (Keep Data)"
+		if m.wizMode == 1 {
+			modeStr = "New Test Run (Flush DB)"
+		}
+		summary := fmt.Sprintf("Please Confirm Launch Parameters:\n\n • Mission Type:   %s\n • Inject Amount:  %s\n • T0 Capacity:    %s\n • CPU Limit:      %s%%\n\nPRESS [ENTER] TO IGNITE  or  [ESC] TO CANCEL", modeStr, m.wizRecords, m.wizT0, m.wizCPU)
 		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n", panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render("🚀 MISSION CONFIGURATION"), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(summary)))))
 	case stateTuneConfirm:
 		summary := fmt.Sprintf("Confirm Physics Update:\n\n • T0 Limit:  %s\n • PID (Kp):  %s\n • PID (Ki):  %s\n • PID (Kd):  %s\n • Buoyancy:  %s\n • High Mark: %s%%\n • Low Mark:  %s%%\n\nPRESS [ENTER] TO APPLY  or  [ESC] TO CANCEL", m.wizTuneT0, m.wizTuneKp, m.wizTuneKi, m.wizTuneKd, m.wizTuneBuoy, m.wizTuneWHigh, m.wizTuneWLow)
 		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n", panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Center, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render("⚙️ APPLY TUNING"), lipgloss.NewStyle().Foreground(colText).Margin(1, 0).Render(summary)))))
 	}
 
-	isTextInputState := m.state >= stateInputRecords && m.state <= stateInputRatio || m.state >= stateTuneT0 && m.state <= stateTuneWLow
+	isTextInputState := m.state >= stateInputRecords && m.state <= stateInputCPU || m.state >= stateTuneT0 && m.state <= stateTuneWLow
 	if isTextInputState {
 		box := panelStyle.Copy().BorderForeground(colInput).Padding(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, lipgloss.NewStyle().Foreground(colInput).Bold(true).Render(title), lipgloss.NewStyle().Foreground(colText).MarginTop(1).Render(prompt), m.textInput.View(), lipgloss.NewStyle().Foreground(colGray).MarginTop(1).Render("Press [Enter] to Next, [Esc] to Cancel")))
 		return appStyle.Render(lipgloss.JoinVertical(lipgloss.Center, "\n\n\n", box))
@@ -653,7 +650,7 @@ func readMetrics() (MetricsData, error) {
 	}
 	defer f.Close()
 	reader := csv.NewReader(f)
-	reader.FieldsPerRecord = -1 // <--- FIX für unvollständige Zeilen während des Schreibens
+	reader.FieldsPerRecord = -1
 	var last []string
 	for {
 		rec, err := reader.Read()
@@ -664,18 +661,22 @@ func readMetrics() (MetricsData, error) {
 			last = rec
 		}
 	}
-	if len(last) < 10 {
+	if len(last) < 16 {
 		return MetricsData{}, fmt.Errorf("syncing...")
 	}
 	rt_sec, _ := strconv.ParseInt(last[1], 10, 64)
 	t0, _ := strconv.ParseInt(last[3], 10, 64)
 	t0_pct, _ := strconv.ParseFloat(last[9], 64)
 	bm_raw := mustInt(last[2])
+	phiDiff, _ := strconv.ParseFloat(last[15], 64)
+
 	return MetricsData{
 		Runtime: fmt.Sprintf("%02d:%02d", rt_sec/60, rt_sec%60), Biomass: formatInt(bm_raw), Biomass_Raw: bm_raw, T0_Raw: t0, T0_Pct: t0_pct,
 		T1: formatInt(mustInt(last[4])), T2: formatInt(mustInt(last[5])), T3: formatInt(mustInt(last[6])), T4: formatInt(mustInt(last[7])), Deep: formatInt(mustInt(last[8])),
+		PhiDiff: phiDiff,
 	}, nil
 }
+
 func main() {
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
