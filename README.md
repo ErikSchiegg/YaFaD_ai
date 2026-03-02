@@ -1,8 +1,144 @@
 # <p align="center"><img src="assets/logo.png" alt="YaFaD_ai Logo" width="100%"></p>
 
-**YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. Instead of treating data as static entries, YaFaD treats it as **dynamic memory**, using biological principles to predictively accelerate access and optimize infrastructure costs.
+**YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. It treats data as a **living organism** that breathes, metabolizes, and evolves. By utilizing biological principles like the **Golden Ratio ($\Phi$), Pheromone Signaling,** and **Synaptic Pruning,** YaFaD autonomously optimizes data access and infrastructure costs.
 
 ---
+## 🛠️ System Requirements & Prerequisites
+
+### 1. Global Environment Variables
+YaFaD requires the following environment variables to communicate with your PostgreSQL instance and locate the Rust core. Add these to your ```.bashrc``` or ```.zshrc:```
+
+```bash
+export DB_USER="your_user"
+export DB_PASSWORD="your_password"
+export DB_NAME="yafad_test"
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./core/target/release
+```
+
+### 2. Required Packages
+
+Ensure you have the following installed on your system (Optimized for EndeavourOS / Arch / Ubuntu):
+
+* **Go (1.21+):** Orchestration and Networking.
+
+* **Rust (Latest Stable):** High-performance mathematical decay core.
+
+* **PostgreSQL:** The physical storage medium.
+
+* **Anaconda / Miniconda:** For the Python-based Mission Control Dashboard.
+
+* **Grafana:** For real-time biomass visualization. Dashboard json provided in the folder ```grafana/```.
+
+* **Linux Utilities:** ```pkill```, ```fuser``` (used by Dashboard for zombie process management).
+---
+## 🚀 Quick Start Guide
+
+**Step 1: Initialize the Organism**
+Prepare the PostgreSQL schema and the Rust-Go bridge.
+```bash
+go run setup_db.go
+cd core && cargo build --release && cd ..
+```
+
+**Step 2: Seed a Legacy Database (For Migration Testing)**
+To test the **Strangler Fig** migration, you need a "old" database to suck data from. We provide a specialized seeding tool:
+```bash
+# Generates a dummy legacy database with 500K records
+go run seed_legacy_db.go 500000
+```
+
+**Step 3: Ignite the Core Engine**
+The engine must be running to handle data decay and tier-cascading.
+```bash
+go run main.go
+```
+
+**Step 4: Start Gradio User Interface with Grafana embedded**
+```bash
+./start_dashboard.sh
+# pkill -f dashboard.py kills the Gradio server
+```
+
+👉 Access via browser: ```http://localhost:7888```
+<p align="center">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_6.png" width="80%">
+</p>
+
+---
+## 🧠 How YaFaD Works: Visual Deep Dive
+The following concepts represent the **Autonomous Data Metabolism** of YaFaD_ai.
+
+**1. The Metabolism of Relevance**
+YaFaD does not store data; it metabolizes it. Every record has a "Utility Index" **($U$)** that acts as its life force.
+<p align="center">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_3.png" width="80%">
+</p>
+<p align="center"><i>Fig 1: The Bio-Inspired Flow of Information</i></p>
+
+**2. The Golden Ratio Cascade ($\Phi$)**
+Data flows through tiers (T0 to T4) based on the **Golden Ratio (1.618)**. This mathematical constant ensures that as data ages, it moves into exponentially larger, slower, and cheaper tiers.
+<p align="center">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_9.png" width="45%">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_10.png" width="45%">
+</p>
+<p align="center"><i>Fig 2: Mathematical Equilibrium and Tiering Logic</i></p>
+
+**3. The Pheromone Principle (Access Acceleration)**
+Whenever a user accesses a record, the **SQL Passthrough Proxy** injects a "Pheromone Signal." This resets the record's Utility to 1.0, pulling it back from the "Cold Tiers" into the "Hot Tiers."
+
+<p align="center">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_7.png" width="45%">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_8.png" width="45%">
+</p>
+
+---
+## 🏗️ System Architecture
+
+**Physical Topology**
+YaFaD acts as a high-performance shield between your Application and your Database.
+
+<p align="center"><img src="assets/yafad_pdf/Autonomous_Data_Metabolism_5.png" width="80%"></p>
+
+**UML & Component Interaction**
+The Go-Side handles the "Nervous System" (I/O, Networking), while the Rust-Side handles the "Cerebral Cortex" (Mathematical Decay).
+
+<p align="center">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_4.png" width="45%">
+<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_16.png" width="45%">
+</p>
+
+**The Strangler Fig Migration Flow**
+In v0.9.3, the migration is **Homeostatic.** The system monitors the T0 pressure and "breathes in" data from the legacy source only when there is space.
+
+<p align="center"><img src="assets/yafad_pdf/Autonomous_Data_Metabolism_12.png" width="80%"></p>
+
+---
+
+## 🚦 Operational Modes
+
+### 🧪 Simulation Mode
+Used for stress-testing and calibration. Generates millions of synthetic records to see how the Golden Ratio holds under load.
+
+### 🌿 Legacy Migration (Strangler Fig)
+1. Safe Read: The proxy reads the old database with offsets.
+
+2. Nuke Option (Optional): Once a table is 100% migrated, the dashboard can trigger a TRUNCATE on the source table to free up disk space immediately.
+
+### 🧠 Expert Tuning
+Using the PID Controller (Proportional-Integral-Derivative), you can tune how "aggressive" the system is in forgetting data.
+
+* **High Watermark:** Stop ingestion when T0 is full.
+* **Low Watermark:** Resume ingestion when T0 has "digested" the data into T1.
+---
+
+## 🛠 Troubleshooting
+* **Shared Object Error:** If Go can't find the Rust core, ensure ```LD_LIBRARY_PATH``` points to ```./core/target/release```.
+
+* **Port 7888 Blocked:** If the dashboard fails to start, run ```fuser -k 7888/tcp``` to kill the previous session.
+
+* **Database Constipation:** If T0 doesn't decrease, check if ```main.go``` is actually running or if the ```max_cpu_percent``` is set too low.
+---
+
 ### 🎥 Watch the Explainer Videos
 
 **🇺🇸🇬🇧 English Version:** (right-click to open in new tab)
@@ -17,6 +153,34 @@
 <a href="https://www.youtube.com/watch?v=EAv0NE9jy7E">
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
 </a>
+
+---
+## 🚀 YaFaD_ai v0.9.3 is Live: The "True Osmosis" Update! 🧬
+I am incredibly excited to announce the release of **YaFaD_ai v0.9.3**! We've pushed the bio-inspired architecture to a whole new level, completely transforming how the system ingests and metabolizes massive datasets from legacy databases.
+
+If you've ever worried about crashing your servers, blowing up your RAM, or locking your database during a multi-million record migration, this update is for you. YaFaD now handles it autonomously.
+
+### 🌳 The Smart "Strangler Fig" Migration**
+We've overhauled the legacy migration proxy. Instead of blindly injecting fixed data chunks, YaFaD now features Homeostatic Ingestion:
+
+* **Dynamic Pressure Calculation:** The proxy reads the exact "T0 Pressure" in real-time and calculates the precise delta needed to hit the optimal **150% capacity peak**. It "breathes" data in perfectly even, mathematically calculated waves.
+
+* **Safe Read Mode:** Zero risk to your legacy DB. YaFaD safely siphons data using high-speed offset reads, completely preventing PostgreSQL WAL (Write-Ahead Log) bloat.
+
+* **Auto-Nuke (Optional):** Once a legacy table is 100% absorbed and safely cascading through the tiers, YaFaD can automatically ```TRUNCATE``` the old table to instantly free up disk space.
+
+### 🎛️ Mission Control Supercharged
+The Gradio-based web dashboard has received massive tactical upgrades:
+
+* **⚡ In-Flight CPU Tuning:** Adjust the engine's maximum CPU limit dynamically on the fly—no engine restarts required!
+
+* **⏸️ Global Pause/Resume:** Instantly hold all simulation and migration processes with a single click.
+
+* **💾 Real-Time Anatomy:** Track the live disk/RAM size of every single tier (T0-T4) directly in the UI to calibrate your estimations perfectly.
+
+* **☢️ Nuclear Flush:** A hardened DB wipe that utilizes OS-level zombie-process eradication (pkill) to guarantee a 100% pristine state for new runs.
+
+Data migration just became organic, mathematically perfect, and entirely crash-proof. 🌊📉
 
 ---
 ## 🎉 What's New in YaFaD v0.9.2 (The "Neuroplasticity" Update)
@@ -202,15 +366,7 @@ journalctl -u yafad -f
 
 # 🗺️ YaFaD Evolution Roadmap
 
-| Phase / Version | Theme | Key Features | Status |
-| :--- | :--- | :--- | :--- |
-| **v0.8.1** | **Resilience & Survival** 🛡️ | • Graceful Shutdown (Signal Handling)<br>• Exponential Backoff for DB connection drops<br>• Safe Startup-Waiting | 🟢  |
-| **v0.8.5** | **The Strangler Fig** 🌳 | • YaFaD Smart Proxy (Query Router)<br>• Zero-Downtime Migration (Legacy -> YaFaD)<br>• Fallback-Reads to original legacy tables | 🟢 |
-| **v0.9.0** | **Multi-Organism** 🦠 | • Parallel migration of multiple tables<br>• Dynamic spawning of T0-T4 pyramids per table<br>• Global memory management across all instances | 🟡 Planned |
-| **v1.0.0** | **Production Ready** 🚀 | • Full containerization (Docker/K8s)<br>• Prometheus/Grafana dashboard integration<br>• Certified stability & security audits | ⚪ Future |
-| **v1.5.0** | **Deep Cortex (RL)** 🧠 | • Reinforcement Learning for `Lambda` control<br>• Real-time anomaly detection in data streams<br>• Predictive pre-archiving ahead of load spikes | ⚪ Future |
-| **v2.0.0** | **The Cloud Nomad** ☁️ | • S3 / Glacier / Backblaze B2 integration for Deep Archive<br>• Strict separation of Compute (Hot DB) and Cold Storage | ⚪ Vision |
-| **v3.0.0** | **Autonomous Broker** 💸 | • "Self-Shopping" algorithm<br>• Live scanning of cloud storage prices (AWS, Hetzner, Cloudflare)<br>• Automatic relocation of Deep Archive blocks to the cheapest provider | ⚪ Vision |
+<p align="center"><img src="assets/yafad_pdf/Autonomous_Data_Metabolism_17.png" width="90%"></p>
 ---
 
 ## Why <img src="assets/logo_small.png" alt="YaFaD_ai Logo" height="28" style="vertical-align: -5px;">?
