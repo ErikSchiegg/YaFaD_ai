@@ -1,0 +1,13 @@
+# Ignoriere Rust Build-Ordner und Lockfiles
+core/target/
+core/Cargo.lock
+
+# Ignoriere bereits lokal kompilierte Go-Binaries
+yafad_engine
+yafad_sim
+yafad_proxy
+
+# Ignoriere CSVs und Logs
+shared/
+yafad_metrics.csv
+yafad_debug.log

@@ -3,16 +3,16 @@
     "legacy_db": {
         "host": "localhost",
         "port": "5432",
-        "user": "legacy_user_7279",
-        "password": "pass_7279_secure",
-        "dbname": "legacy_crm_7279"
+        "user": "legacy_user_3157",
+        "password": "pass_3157_secure",
+        "dbname": "legacy_crm_3157"
     },
     "yafad_whitelist": [
         "customers",
         "orders",
         "system_logs"
     ],
-    "t0_cap": 100000,
-    "flush_on_start": true,
+    "t0_cap": 180000,
+    "flush_on_start": false,
     "truncate_legacy_after": true
 }

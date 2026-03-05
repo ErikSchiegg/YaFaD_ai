@@ -1,0 +1,40 @@
+# Stage 1: Build Rust Core
+FROM golang:1.25-bookworm AS builder
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+WORKDIR /app
+COPY . .
+RUN cd core && cargo build --release
+ENV LD_LIBRARY_PATH=/app/core/target/release
+ENV CGO_ENABLED=1
+RUN go build -o yafad_engine main.go
+
+# Stage 2: Runtime mit Go, Python und Gradio
+FROM golang:1.25-bookworm
+
+# System-Pakete installieren
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
+    gcc \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# WICHTIG: Gradio installieren
+# Wir nutzen --break-system-packages, da wir uns in einem isolierten Container befinden
+RUN pip3 install --no-cache-dir gradio --break-system-packages
+
+WORKDIR /app
+
+# Binaries und Source kopieren
+COPY --from=builder /app/yafad_engine .
+COPY . .
+COPY --from=builder /app/core/target/release/libyafad_core.so ./core/target/release/
+
+ENV LD_LIBRARY_PATH=/app/core/target/release
+ENV CGO_ENABLED=1
+
+# Start der Engine
+CMD ["./yafad_engine"]

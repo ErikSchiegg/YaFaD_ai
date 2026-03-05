@@ -1,0 +1,56 @@
+services:
+  # 1. The Physical Memory (PostgreSQL)
+  postgres:
+    image: postgres:15-alpine
+    network_mode: "host"
+    environment:
+      POSTGRES_USER: eriks
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: yafad_test
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. The Eyes (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    network_mode: "host" # KUGELSICHERER FIX
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_HTTP_PORT=3031 # Erzwingt Port 3031 direkt in Grafana (um Konflikte zu vermeiden)
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+  # 3. The Brain & Nervous System (YaFaD Engine)
+  yafad-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.engine
+    network_mode: "host" # KUGELSICHERER FIX
+    environment:
+      - DB_USER=eriks
+      - DB_PASSWORD=test
+      - DB_HOST=localhost # Jetzt wieder localhost!
+    volumes:
+      - shared_workspace:/app/shared
+    depends_on:
+      - postgres
+
+  # 4. Mission Control (Gradio)
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    network_mode: "host" # KUGELSICHERER FIX
+    environment:
+      - DB_USER=eriks
+      - DB_PASSWORD=test
+      - DB_HOST=localhost # Jetzt wieder localhost!
+    volumes:
+      - shared_workspace:/app/shared
+    depends_on:
+      - yafad-engine
+
+volumes:
+  pgdata:
+  grafana_data:
+  shared_workspace:

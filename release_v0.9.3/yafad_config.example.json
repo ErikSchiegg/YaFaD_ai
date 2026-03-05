@@ -1,0 +1,39 @@
+{
+  "run_state": "RUNNING",
+  "inject_total": 0,
+  "inject_done": 0,
+  "t0_hard_limit": 180000,
+  "target_ratio": 1,
+  "limits": {
+    "max_cpu_percent": 50
+  },
+  "pid_settings": {
+    "kp": 1.129,
+    "ki": 0.106,
+    "kd": 0.759
+  },
+  "vanish_threshold": "20m",
+  "flush_on_start": false,
+  "grafana_url": "http://localhost:3030/d/adf7cqm/yafad-ai-biomass-tiers?orgId=1&from=now-90m&to=now&timezone=browser&refresh=5s&tab=queries",
+  "buoyancy_factor": 0.85,
+  "watermarks": {
+    "high": 150,
+    "low": 110
+  },
+  "active_tiers": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "capacities": {
+    "table0": 180000,
+    "table1": 566311,
+    "table2": 916311,
+    "table3": 1482623,
+    "table4": 2398935
+  },
+  "sniffer_active": true,
+  "last_updated": "2026-02-19T22:13:57Z"
+}

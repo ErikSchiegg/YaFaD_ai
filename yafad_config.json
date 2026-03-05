@@ -1,8 +1,8 @@
 {
-  "run_state": "RUNNING",
+  "run_state": "STOPPED",
   "inject_total": 0,
   "inject_done": 0,
-  "t0_hard_limit": 100000,
+  "t0_hard_limit": 180000,
   "active_tiers": [
     0,
     1,
@@ -11,7 +11,7 @@
     4
   ],
   "capacities": {
-    "table0": 100000,
+    "table0": 180000,
     "table1": 566311,
     "table2": 916311,
     "table3": 1482623,
@@ -21,8 +21,8 @@
   "flush_on_start": false,
   "buoyancy_factor": 0.85,
   "watermarks": {
-    "high": 150,
-    "low": 110
+    "high": 149.99822511769423,
+    "low": 109.99946753530827
   },
   "sniffer_active": true,
   "vanish_threshold": "20m",

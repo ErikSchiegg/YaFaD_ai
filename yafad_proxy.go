@@ -22,10 +22,14 @@ type MigrationPolicy struct {
 	TruncateLegacyAfter bool                   `json:"truncate_legacy_after"`
 }
 
+// ---> DOCKER ANPASSUNG: Pfade in den shared/ Ordner umgeleitet <---
+const CONFIG_FILE = "shared/yafad_config.json"
+const POLICY_FILE = "shared/migration_policy.json"
+
 // Checkt dynamisch yafad_config.json auf Pause-Zustand
 func waitIfPaused() {
 	for {
-		data, err := os.ReadFile("yafad_config.json")
+		data, err := os.ReadFile(CONFIG_FILE) // Angepasst
 		if err == nil {
 			var conf map[string]interface{}
 			if err := json.Unmarshal(data, &conf); err == nil {
@@ -43,7 +47,7 @@ func waitIfPaused() {
 }
 
 func main() {
-	policyFile, err := os.ReadFile("migration_policy.json")
+	policyFile, err := os.ReadFile(POLICY_FILE) // Angepasst
 	if err != nil {
 		fmt.Println("❌ Error reading migration_policy.json:", err)
 		return
@@ -65,11 +69,12 @@ func main() {
 	ctx := context.Background()
 	legPool, err := pgxpool.New(ctx, legConnStr)
 	if err != nil {
-		fmt.Println("❌ Legacy DB connection failed:", err)
+		fmt.Printf("❌ Legacy DB connection failed at %s:%s - %v\n", legDB["host"], legDB["port"], err)
 		return
 	}
 	defer legPool.Close()
 
+	// ---> DOCKER ANPASSUNG: DB_HOST dynamisch auslesen für YaFaD DB <---
 	yafadUser := os.Getenv("DB_USER")
 	if yafadUser == "" {
 		yafadUser = "eriks"
@@ -78,11 +83,16 @@ func main() {
 	if yafadPass == "" {
 		yafadPass = "test"
 	}
-	yafadConnStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", yafadUser, yafadPass)
+	yafadHost := os.Getenv("DB_HOST")
+	if yafadHost == "" {
+		yafadHost = "localhost"
+	}
+
+	yafadConnStr := fmt.Sprintf("postgres://%s:%s@%s:5432/yafad_test?sslmode=disable", yafadUser, yafadPass, yafadHost) // Angepasst
 
 	yafadPool, err := pgxpool.New(ctx, yafadConnStr)
 	if err != nil {
-		fmt.Println("❌ YaFaD DB connection failed:", err)
+		fmt.Printf("❌ YaFaD DB connection failed at %s - %v\n", yafadHost, err)
 		return
 	}
 	defer yafadPool.Close()
