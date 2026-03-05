@@ -4,10 +4,15 @@ import json
 import time
 import os
 import subprocess
+import re
+
+# Sicherstellen, dass das shared-Verzeichnis für Docker existiert
+os.makedirs("shared", exist_ok=True)
 
 # --- GLOBAL SETTINGS ---
-CONFIG_FILE = "yafad_config.json"
-METRICS_FILE = "yafad_metrics.csv"
+CONFIG_FILE = "shared/yafad_config.json"
+METRICS_FILE = "shared/yafad_metrics.csv"
+PROXY_LOG_FILE = "shared/yafad_proxy.log"
 DASHBOARD_PORT = 7888
 DEFAULT_GRAFANA = "http://localhost:3030/d/adf7cqm/yafad-ai-biomass-tiers?orgId=1&from=now-90m&to=now&timezone=browser&refresh=5s&tab=queries"
 
@@ -121,7 +126,8 @@ def hard_flush_yafad_db():
             PROXY_LOG_FILE = None
         time.sleep(2.5)
         
-        conn = psycopg2.connect(host="localhost", port=5432, user=db_user, password=db_pass, dbname="yafad_test")
+        db_host = os.getenv("DB_HOST", "localhost")
+        conn = psycopg2.connect(host=db_host, port=5432, user=db_user, password=db_pass, dbname="yafad_test")
         conn.autocommit = True
         cur = conn.cursor()
         for t in ["table0", "table1", "table2", "table3", "table4", "deep_archive"]:
@@ -130,6 +136,40 @@ def hard_flush_yafad_db():
         return "🧹 SUCCESS: NUCLEAR FLUSH! All proxy zombies killed & DB is 100% pristine!\n⚠️ REMINDER: You MUST restart main.go now!"
     except Exception as e:
         return f"❌ FLUSH FAILED: {e}"
+
+def generate_legacy_db(record_count):
+    print(f"▶️ BEREITE LEGACY GENERATOR VOR... (Target: {record_count})")
+    db_host = os.getenv("DB_HOST", "localhost")
+    try:
+        cmd = ["./legacy_gen", "-count", str(int(record_count))]
+        env = os.environ.copy()
+        env["DB_HOST"] = db_host
+        
+        print(f"▶️ STARTE GO-BINARY: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        output = result.stdout + result.stderr
+        print(f"▶️ GO-BINARY OUTPUT:\n{output}")
+        
+        new_db = "legacy_crm_???"
+        new_u = "legacy_user_???"
+        new_pw = "test" 
+        
+        db_match = re.search(r'(legacy_crm_\d+)', output)
+        u_match = re.search(r'(legacy_user_\d+)', output)
+        
+        if db_match: new_db = db_match.group(1)
+        if u_match: new_u = u_match.group(1)
+            
+        if db_match and u_match:
+            print("✅ LOGINDATEN ERFOLGREICH GEFUNDEN!")
+            return f"✅ Success! Generated {record_count} records.\nDB: {new_db} | User: {new_u}", db_host, "5432", new_db, new_u, new_pw
+        else:
+            print("⚠️ LOGINDATEN NICHT GEFUNDEN!")
+            return f"⚠️ Done, but couldn't auto-parse credentials from output.\nLog:\n{output[:500]}", db_host, "5432", new_db, new_u, new_pw
+            
+    except Exception as e:
+        print(f"❌ FATALER FEHLER IM GENERATOR: {e}")
+        return f"❌ Error running generator: {e}", db_host, "5432", "", "", ""
 
 def update_tuning(t0_req, cpu_tune, kp, ki, kd, buoyancy, w_high, w_low):
     conf = get_current_config()
@@ -207,12 +247,12 @@ def start_mission(total_recs, t0_limit, cpu_percent, run_mode, host, port, user,
             "flush_on_start": mig_flush_enabled,
             "truncate_legacy_after": mig_nuke_legacy # NEU: Wird an den Go Proxy gesendet
         }
-        with open("migration_policy.json", "w") as f: 
+        with open("shared/migration_policy.json", "w") as f: # ANGEPASST
             json.dump(proxy_conf, f, indent=4)
         
         try:
-            cmd = ["go", "run", "yafad_proxy.go"]
-            PROXY_LOG_FILE = open("yafad_proxy.log", "w")
+            cmd = ["./yafad_proxy"]
+            PROXY_LOG_FILE = open("shared/yafad_proxy.log", "w") # ANGEPASST
             PROXY_PROCESS = subprocess.Popen(cmd, stdout=PROXY_LOG_FILE, stderr=subprocess.STDOUT, text=True, cwd=os.getcwd())
         except Exception as e:
             return f"❌ Proxy Start failed: {e}"
@@ -287,6 +327,7 @@ def scan_database(host, port, user, password, dbname):
 def get_live_db_sizes():
     db_user = os.getenv("DB_USER", "eriks")
     db_pass = os.getenv("DB_PASSWORD", "test")
+    db_host = os.getenv("DB_HOST", "localhost")
     try:
         conn = psycopg2.connect(host="localhost", port=5432, user=db_user, password=db_pass, dbname="yafad_test")
         cur = conn.cursor()
@@ -371,6 +412,12 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     )
                     
                     with gr.Column(visible=False) as mig_panel:
+                        with gr.Accordion("🛠️ Auto-Generate Demo Legacy DB", open=False):
+                            gr.Markdown("Creates a completely new legacy database filled with dummy records and auto-fills the credentials below.")
+                            with gr.Row():
+                                gen_count = gr.Number(value=100000, label="Records to generate", interactive=True, scale=2)
+                                btn_gen_legacy = gr.Button("⚙️ Create Database", variant="secondary", scale=1)
+                            gen_status = gr.Textbox(label="Generator Status", interactive=False)
                         gr.Markdown("### 🔗 Legacy Database Credentials")
                         with gr.Row():
                             db_h = gr.Textbox(label="Host", value="localhost")

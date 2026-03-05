@@ -1,0 +1,24 @@
+# Stage 1: Build the Go Binaries
+FROM golang:1.25-bookworm AS builder
+WORKDIR /app
+COPY . .
+# Wir bauen den Proxy und den Legacy Generator
+RUN CGO_ENABLED=0 go build -o yafad_proxy yafad_proxy.go
+RUN CGO_ENABLED=0 go build -o legacy_gen seed_legacy_db.go 
+
+# Stage 2: Python Dashboard
+FROM python:3.11-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y procps && rm -rf /var/lib/apt/lists/*
+
+COPY dashboard.py .
+COPY assets/ ./assets/
+
+# Hole die fertigen Programme aus Stage 1
+COPY --from=builder /app/yafad_proxy .
+COPY --from=builder /app/legacy_gen .
+
+RUN pip install --no-cache-dir gradio psycopg2-binary pandas
+
+CMD ["python", "dashboard.py"]

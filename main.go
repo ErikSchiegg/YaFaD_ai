@@ -40,8 +40,12 @@ import (
 )
 
 const PHI = 1.61803398875
-const CONFIG_FILE = "yafad_config.json"
-const BRAIN_FILE = "brain_weights.json"
+
+// ---> DOCKER ANPASSUNGEN: Pfade in den shared/ Ordner umgeleitet <---
+const CONFIG_FILE = "shared/yafad_config.json"
+const BRAIN_FILE = "shared/brain_weights.json"
+const METRICS_FILE = "shared/yafad_metrics.csv"
+const KEY_FILE = "shared/yafad_secret.key"
 
 // --- CONFIG STRUCTURES ---
 
@@ -165,11 +169,12 @@ func (pid *PIDController) Update(currentVal, setPoint float64) float64 {
 }
 
 // --- IMMUNSYSTEM (AES-256-GCM Verschlüsselung) ---
-const KEY_FILE = "yafad_secret.key"
-
 var globalSymmetricKey []byte
 
 func initCrypto() {
+	// Sicherstellen, dass das Shared-Verzeichnis existiert
+	os.MkdirAll("shared", os.ModePerm)
+
 	data, err := os.ReadFile(KEY_FILE)
 	if err == nil && len(data) == 32 {
 		globalSymmetricKey = data
@@ -351,10 +356,14 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 
 // --- MAIN ---
 func main() {
+	// Sicherstellen, dass das Shared-Verzeichnis existiert
+	os.MkdirAll("shared", os.ModePerm)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logPath := "/tmp/yafad_debug.log"
+	// Logger initialisieren
+	logPath := "shared/yafad_debug.log" // Auch ins Shared-Dir für Docker
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	defer logFile.Close()
 	logger := slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -368,6 +377,7 @@ func main() {
 		cancel()
 	}()
 
+	// ---> DOCKER ANPASSUNG: DB_HOST auslesen <---
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -376,13 +386,17 @@ func main() {
 	if dbPass == "" {
 		dbPass = "test"
 	}
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
 
-	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:5432/yafad_test?sslmode=disable", dbUser, dbPass, dbHost)
 
 	var hotPool, coldPool *pgxpool.Pool
 	var err error
 
-	fmt.Printf("⏳ Connecting to Database (User: %s)...\n", dbUser)
+	fmt.Printf("⏳ Connecting to Database at %s (User: %s)...\n", dbHost, dbUser)
 
 	for attempts := 1; attempts <= 10; attempts++ {
 		hotPool, err = pgxpool.New(ctx, connStr)
@@ -397,7 +411,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Printf("\n\n❌ FATAL: Could not connect to PostgreSQL Database.\n")
+		fmt.Printf("\n\n❌ FATAL: Could not connect to PostgreSQL Database at %s.\n", dbHost)
 		os.Exit(1)
 	}
 	fmt.Println(" ✅ Connected!")
@@ -446,8 +460,15 @@ func main() {
 		}
 	}()
 
-	rustCore := &cortex.RustCoreFFI{LibraryPath: "./libyafd_core.so"}
-	brain := cortex.NewCortex("brain_data.json", rustCore)
+	// ---> RUST CORE: Fallback-Pfade für Docker <---
+	// Versucht erst den Standardpfad, dann einen Root-Pfad falls kopiert
+	rustLibPath := "./core/target/release/libyafad_core.so"
+	if _, err := os.Stat(rustLibPath); os.IsNotExist(err) {
+		rustLibPath = "./libyafad_core.so"
+	}
+	rustCore := &cortex.RustCoreFFI{LibraryPath: rustLibPath}
+	brain := cortex.NewCortex(BRAIN_FILE, rustCore)
+
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
@@ -462,10 +483,15 @@ func main() {
 		}
 	}()
 
-	fmt.Println("🦁 YaFaD v0.9.0 Online. Waiting for Mission Command via Dashboard...")
+	fmt.Println("🦁 YaFaD v0.9.3 Online. Waiting for Mission Command via Dashboard...")
 
 	startMonitoringService(hotPool)
-	go launchDashboard()
+	// Die Dashboard-Start-Funktion wird in Docker nicht mehr benötigt (Gradio läuft in eigenem Container)
+	// Wir lassen den Aufruf aber drin für Non-Docker-Umgebungen
+	if os.Getenv("DISABLE_INTERNAL_DASHBOARD") != "true" {
+		go launchDashboard()
+	}
+
 	go runEquilibriumSmoother(ctx, router)
 
 	ticker := time.NewTicker(1 * time.Second)
@@ -551,7 +577,7 @@ func main() {
 func optimizePIDParams() {
 	fmt.Println("\n🧠 KONSOLIDIERUNG: Analysiere Zell-Metriken für PID-Tuning...")
 
-	data, err := os.ReadFile("yafad_metrics.csv")
+	data, err := os.ReadFile(METRICS_FILE)
 	if err != nil {
 		fmt.Println("⚠️ Konnte Metriken nicht lesen, überspringe Tuning.")
 		return
@@ -955,7 +981,16 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 			fmt.Printf("\r🔥 Injecting... [%d left] T0: %.1f%% (Target %.0f%%)    ", remaining, fillPct, wHigh)
 
+			// ---> DOCKER ANPASSUNG: DB_HOST an den Simulator weitergeben <---
+			dbHost := os.Getenv("DB_HOST")
+			if dbHost == "" {
+				dbHost = "localhost"
+			}
 			cmd := exec.CommandContext(ctx, "./yafad_sim", "-count", fmt.Sprintf("%d", currentBatch), "-mode", "scenario", "-offset", fmt.Sprintf("%d", offset))
+
+			// Das Environment für den Sub-Prozess anpassen!
+			cmd.Env = append(os.Environ(), fmt.Sprintf("DB_HOST=%s", dbHost))
+
 			if err := cmd.Run(); err != nil {
 				fmt.Printf("❌ Sim Error: %v\n", err)
 				time.Sleep(1 * time.Second)
@@ -1209,9 +1244,9 @@ func startMonitoringService(pool *pgxpool.Pool) {
 	caps := globalConfig.Capacities
 	configMu.RUnlock()
 
-	if _, err := os.Stat("yafad_metrics.csv"); os.IsNotExist(err) {
-		fmt.Println("⚠️  yafad_metrics.csv fehlt! Erstelle eine neue Datei mit Headern...")
-		f, _ := os.Create("yafad_metrics.csv")
+	if _, err := os.Stat(METRICS_FILE); os.IsNotExist(err) {
+		fmt.Println("⚠️  Metrics file missing! Creating a fresh one...")
+		f, _ := os.Create(METRICS_FILE)
 		f.WriteString("timestamp,runtime_sec,total_biomass,t0,t1,t2,t3,t4,deep_archive,t0_pct,t1_pct,t2_pct,t3_pct,t4_pct,lambda,phi_diff\n")
 		f.Close()
 	}
@@ -1241,10 +1276,10 @@ func startMonitoringService(pool *pgxpool.Pool) {
 		return target, done, isRunning, kp, ki, kd
 	}
 
-	fmt.Println("📊 Monitoring active. Writing to yafad_metrics.csv & Prometheus :2112")
+	fmt.Printf("📊 Monitoring active. Writing to %s & Prometheus :2112\n", METRICS_FILE)
 
 	go monitoring.StartMonitor(pool, monitoring.MonitorConfig{
-		Interval: 5 * time.Second, TargetPhi: PHI, CSVFile: "yafad_metrics.csv", Capacities: monCaps,
+		Interval: 5 * time.Second, TargetPhi: PHI, CSVFile: METRICS_FILE, Capacities: monCaps,
 	}, getLambda, getSystemState)
 }
 
