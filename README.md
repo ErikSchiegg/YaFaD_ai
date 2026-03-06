@@ -5,15 +5,11 @@
 ---
 ## 🛠️ System Requirements & Prerequisites
 
-### 1. Global Environment Variables
-YaFaD requires the following environment variables to communicate with your PostgreSQL instance and locate the Rust core. Add these to your ```.bashrc``` or ```.zshrc:```
+**1. Docker & Docker Compose**
+YaFaD v0.9.4 is fully containerized. You only need Docker installed on your host system. 
+All environment variables and library paths are pre-configured within the containers.
 
-```bash
-export DB_USER="your_user"
-export DB_PASSWORD="your_password"
-export DB_NAME="yafad_test"
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./core/target/release
-```
+*(No manual export of DB_USER or LD_LIBRARY_PATH required anymore!)*
 
 # 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
 ### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
