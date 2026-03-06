@@ -154,7 +154,87 @@ Using the PID Controller (Proportional-Integral-Derivative), you can tune how "a
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
 </a>
 
+# 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
+### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
+
+We are thrilled to announce the **v0.9.4 Release**! This update marks a paradigm shift in how you deploy and monitor your data metabolism. By fully containerizing the entire ecosystem—**Go Engine, Rust Core, PostgreSQL, Prometheus, Grafana, and Gradio**—we have officially eliminated "installation hell." 
+
+Whether you are on Arch (EndeavourOS), Debian, or MacOS, YaFaD now runs everywhere with surgical precision.
+
 ---
+
+## 🔥 What’s New in v0.9.4?
+
+### 1. 🐳 Full Docker Orchestration
+No more manual dependency management. Our new **Multi-Stage Docker builds** handle the heavy lifting:
+* **Rust Core:** Compiled in a high-performance builder stage.
+* **Go Engine (v1.25.7):** Runs in a stable Debian Bookworm environment.
+* **Python/Gradio Dashboard:** Pre-configured with all necessary drivers (`psycopg2`, `pandas`).
+
+### 2. 🛡️ Atomic "Bite-and-Delete" Migration
+The Legacy Migration is now "Strangler Fig" compliant. We've moved to an **atomic transaction model**:
+* **Safety First:** Data is only deleted from the Legacy DB *after* a successful commit in YaFaD.
+* **Sawtooth Control:** Migration pulses are synchronized with your **T0 Cortex** capacity to prevent system flooding.
+
+### 3. 🩺 Professional Diagnostics (The "MRI Scan")
+Integrated industrial-grade debugging tools directly into the containers:
+* **Prometheus Endpoint (`:2112`):** Real-time tracking of biomass, $\phi$-diff, and PID oscillations.
+* **Go pprof (`:6060`):** Attach a profiler to the running engine without stopping the mission.
+
+### 4. 🧠 Adaptive Physics 2.0
+The **Equilibrium Smoother** and **PID Autotuner** are now Docker-aware. They monitor DB pressure via shared volumes and adjust buoyancy factors in real-time to maintain the Golden Ratio ($\phi \approx 1.618$).
+
+---
+
+## 🛠️ Mission Control: Docker Commands
+
+Getting YaFaD up and running is now a one-liner.
+
+### 🚀 Start the Organism
+Build the images and start all services (Engine, DB, Dashboard, Grafana) in the background:
+```bash
+docker-compose up --build -d
+```
+
+## 📊 Monitor the Pulse
+
+Follow the engine logs in real-time to watch the "Biomass" grow:
+```bash
+docker logs -f yafad-engine-1
+```
+
+## ⏸️ Pause / Stop the Mission
+
+Shut down all containers while keeping your data intact in the volumes:
+```bash
+docker-compose down
+```
+
+## 🧹 Total Reset (Clean Slate)
+
+Wipe the database and start a completely fresh test run:
+```bash
+docker-compose down -v
+docker-compose up --build
+```
+---
+
+### 🌐 Connectivity Map
+
+| Service | URL | Note |
+| --- | --- | --- |
+| **Gradio Dashboard** | `http://localhost:7888` | Main UI |
+| **Grafana** | `http://localhost:3031` | User/Pass: admin |
+| **Prometheus Metrics** | `http://localhost:2112/metrics` | Raw Data |
+| **Internal Profiling** | `http://localhost:6060/debug/pprof` | Debugging |
+
+---
+
+**YaFaD v0.9.4** is not just a tool; it's a living, breathing data architecture. Secure, scalable, and finally—easy to install.
+
+**Ready to ignite? 🧪🦁**
+---
+
 ## 🚀 YaFaD_ai v0.9.3 is Live: The "True Osmosis" Update! 🧬
 I am incredibly excited to announce the release of **YaFaD_ai v0.9.3**! We've pushed the bio-inspired architecture to a whole new level, completely transforming how the system ingests and metabolizes massive datasets from legacy databases.
 
@@ -183,34 +263,6 @@ The Gradio-based web dashboard has received massive tactical upgrades:
 Data migration just became organic, mathematically perfect, and entirely crash-proof. 🌊📉
 
 ---
-## 🎉 What's New in YaFaD v0.9.2 (The "Neuroplasticity" Update)
-
-This monumental release transforms YaFaD from a reactive database engine into a fully autonomous, self-healing organism. By introducing Epidemic Networking and In-Flight Machine Learning, YaFaD now scales and breathes entirely on its own.
-
-### 🧬 Key Biological Upgrades:
-
-* **🧠 In-Flight Neuroplasticity (Real-Time PID Tuning):** YaFaD no longer waits for a mission to end to learn. During massive data injections (e.g., millions of records), the engine analyzes its own `yafad_metrics.csv` every 500,000 records. If it detects inefficiencies, it dynamically adjusts its $Kp$, $Ki$, and $Kd$ parameters on the fly without stopping the data flow.
-* **🫁 Hyperventilation Protection:** The system monitors the "breath duration" (oscillation between high and low watermarks). If the T0-Cortex breathes too frantically (under 20 seconds per cycle), the engine detects *Hyperventilation*, triggers an emergency dampening of the PID values, and enforces a 60-second cooldown period to let the system settle.
-* **🕸️ Epidemic Networking (Gossip Protocol & Osmosis):** YaFaD nodes now have a voice and ears. Using UDP broadcasts (Port 7777), nodes exchange heartbeats and pressure levels. If a lightweight "Edge Node" overflows, it autonomously finds the least-stressed neighbor and "coughs" encrypted payloads over the network via HTTP to maintain the Golden Ratio across servers.
-* **🛡️ Cryptographic Immune System:** All payloads are now automatically secured with End-to-End AES-256-GCM encryption. Nodes route and sort the data blindly and securely based solely on unencrypted metadata (Utility Index).
-* **🎛️ Refined Mission Control Dashboard:** The Gradio UI has been heavily optimized. The `Target Ratio` is now fully handled by the engine's internal math, and complex Pulse/PID controls are neatly tucked away behind a new **Expert Mode** toggle for a cleaner, presentation-ready interface.
-
-*Watch the machine breathe, learn, and perfectly align millions of records to the Golden Ratio 🚀*
-
-## 🚀 What's New in v0.9.1: The 5-Million Golden Milestone
-
-Version 0.9.1 marks a massive breakthrough in the YaFaD ecosystem. The system has officially evolved from a theoretical engine into a highly stable, self-regulating data organism
-
-In our latest stress tests, the engine successfully processed and cascaded 5,000,000 records without a single hitch, proving that the biological data-decay model works flawlessly at scale.
-
-### ✨ Highlights of this Release:
-
-* 🧬 The Perfect Golden Ratio ($\Phi$): YaFaD achieved true mathematical equilibrium. Through pure organic pressure and Lambda-decay, the system automatically distributed 5 million records across 5 tiers, hitting a near-perfect 1.618 ratio between layers (e.g., the T3/T2 ratio landed at exactly ```1.6182```)
-* 🫁 True "Breathing" Architecture: The physical deadlocks are gone. The Cortex (T0) now perfectly handles massive pulse injections by expanding (High Watermark) and naturally exhaling data down the fractal cascade. Once equilibrium is reached, the organism peacefully goes to sleep at 0% CPU load.
-* 🧩 Variable Anatomy: Introduced dynamic ```ActiveTiers```. YaFaD nodes can now be instantly configured as heavy core-nodes (T0-T4) or lightweight edge-nodes (e.g., T0 only), laying the exact groundwork for distributed multi-node clusters.
-* 🎛️ Synchronized Mission Control: The Gradio Dashboard and BubbleTea TUI are now in complete harmony, allowing for live, on-the-fly physics tuning, instant database flushing, and real-time monitoring of the system's "biomass" without ever restarting the engine.
-
-Next Stop: Evolution into a Multi-Organism. We are preparing the network for Epidemic Routing (Gossip Protocol) and End-to-End Payload Encryption, allowing independent YaFaD cells to communicate and offload data across distributed devices! 🕸️
 
 ### The Result:
 A self-regulating, breathing, and hardware-aware data organism. It doesn't just store data; it metabolizes it. With the new "Pulse" mechanics and visual feedback in Grafana, YaFaD v0.9.0 is ready for the main stage. 🦁📊
