@@ -94,6 +94,7 @@ docker-compose up --build
 **YaFaD v0.9.4** is not just a tool; it's a living, breathing data architecture. Secure, scalable, and finally—easy to install.
 
 **Ready to ignite? 🧪🦁**
+
 ---
 
 👉 Access via browser: ```http://localhost:7888```
