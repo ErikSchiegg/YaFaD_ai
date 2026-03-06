@@ -7,6 +7,8 @@ extern double calculate_decay(double u_last, double lambda, double delta_t);
 */
 import "C"
 import (
+	"YaFaD_ai/internal/cortex"
+	"YaFaD_ai/internal/monitoring"
 	"bytes"
 	"context"
 	"crypto/aes"
@@ -20,6 +22,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -30,13 +33,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"YaFaD_ai/internal/cortex"
-	"YaFaD_ai/internal/monitoring"
-
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const PHI = 1.61803398875
@@ -426,12 +425,15 @@ func main() {
 	initConfig()
 	initCrypto()
 
+	//START WEBSERVER
+	go func() {
+		http.ListenAndServe(":6060", nil)
+	}()
 	// GOSSIP PROTOKOLL STARTEN!
 	startGossipProtocol(ctx, hotPool)
 
 	go configWatcher(ctx)
 	go brainWatcher(ctx)
-
 	go func() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
@@ -920,11 +922,15 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records (Remaining: %d)\n", total, remaining)
 
 	for remaining > 0 {
-		select {
-		case <-ctx.Done():
-			fmt.Println("\n🛑 Injection Aborted by User.")
+		// NEU: Sofort-Stopp wenn RunState sich ändert oder Target ungültig wird
+		configMu.RLock()
+		currentStatus := globalConfig.RunState
+		currentTarget := globalConfig.InjectTotal
+		configMu.RUnlock()
+
+		if currentStatus != "RUNNING" || currentTarget <= 0 {
+			fmt.Println("\n🛑 Emergency Stop: Mission aborted or Target cleared.")
 			return
-		default:
 		}
 
 		var t0Count int
@@ -990,7 +996,8 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 			// Das Environment für den Sub-Prozess anpassen!
 			cmd.Env = append(os.Environ(), fmt.Sprintf("DB_HOST=%s", dbHost))
-
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
 				fmt.Printf("❌ Sim Error: %v\n", err)
 				time.Sleep(1 * time.Second)

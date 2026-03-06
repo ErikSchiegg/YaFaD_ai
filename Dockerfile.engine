@@ -9,10 +9,10 @@ ENV LD_LIBRARY_PATH=/app/core/target/release
 ENV CGO_ENABLED=1
 RUN go build -o yafad_engine main.go
 
-# Stage 2: Runtime mit Go, Python und Gradio
+# Stage 2: Runtime mit Go, Python und allen Treibern
 FROM golang:1.25-bookworm
 
-# System-Pakete installieren
+# 1. System-Pakete installieren (Wichtig: python3-pip muss hier dabei sein!)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     python3 \
@@ -22,13 +22,13 @@ RUN apt-get update && apt-get install -y \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# WICHTIG: Gradio installieren
-# Wir nutzen --break-system-packages, da wir uns in einem isolierten Container befinden
-RUN pip3 install --no-cache-dir gradio --break-system-packages
+# 2. Python-Abhängigkeiten für das Dashboard installieren
+# Wir fügen hier psycopg2-binary und pandas hinzu
+RUN pip3 install --no-cache-dir gradio psycopg2-binary pandas --break-system-packages
 
 WORKDIR /app
 
-# Binaries und Source kopieren
+# 3. Binaries und Source kopieren
 COPY --from=builder /app/yafad_engine .
 COPY . .
 COPY --from=builder /app/core/target/release/libyafad_core.so ./core/target/release/
