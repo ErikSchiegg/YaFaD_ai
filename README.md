@@ -15,49 +15,86 @@ export DB_NAME="yafad_test"
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./core/target/release
 ```
 
-### 2. Required Packages
+# 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
+### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
 
-Ensure you have the following installed on your system (Optimized for EndeavourOS / Arch / Ubuntu):
+We are thrilled to announce the **v0.9.4 Release**! This update marks a paradigm shift in how you deploy and monitor your data metabolism. By fully containerizing the entire ecosystem—**Go Engine, Rust Core, PostgreSQL, Prometheus, Grafana, and Gradio**—we have officially eliminated "installation hell." 
 
-* **Go (1.21+):** Orchestration and Networking.
+Whether you are on Arch (EndeavourOS), Debian, or MacOS, YaFaD now runs everywhere with surgical precision.
 
-* **Rust (Latest Stable):** High-performance mathematical decay core.
-
-* **PostgreSQL:** The physical storage medium.
-
-* **Anaconda / Miniconda:** For the Python-based Mission Control Dashboard.
-
-* **Grafana:** For real-time biomass visualization. Dashboard json provided in the folder ```grafana/```.
-
-* **Linux Utilities:** ```pkill```, ```fuser``` (used by Dashboard for zombie process management).
 ---
-## 🚀 Quick Start Guide
 
-**Step 1: Initialize the Organism**
-Prepare the PostgreSQL schema and the Rust-Go bridge.
+## 🔥 What’s New in v0.9.4?
+
+### 1. 🐳 Full Docker Orchestration
+No more manual dependency management. Our new **Multi-Stage Docker builds** handle the heavy lifting:
+* **Rust Core:** Compiled in a high-performance builder stage.
+* **Go Engine (v1.25.7):** Runs in a stable Debian Bookworm environment.
+* **Python/Gradio Dashboard:** Pre-configured with all necessary drivers (`psycopg2`, `pandas`).
+
+### 2. 🛡️ Atomic "Bite-and-Delete" Migration
+The Legacy Migration is now "Strangler Fig" compliant. We've moved to an **atomic transaction model**:
+* **Safety First:** Data is only deleted from the Legacy DB *after* a successful commit in YaFaD.
+* **Sawtooth Control:** Migration pulses are synchronized with your **T0 Cortex** capacity to prevent system flooding.
+
+### 3. 🩺 Professional Diagnostics (The "MRI Scan")
+Integrated industrial-grade debugging tools directly into the containers:
+* **Prometheus Endpoint (`:2112`):** Real-time tracking of biomass, $\phi$-diff, and PID oscillations.
+* **Go pprof (`:6060`):** Attach a profiler to the running engine without stopping the mission.
+
+### 4. 🧠 Adaptive Physics 2.0
+The **Equilibrium Smoother** and **PID Autotuner** are now Docker-aware. They monitor DB pressure via shared volumes and adjust buoyancy factors in real-time to maintain the Golden Ratio ($\phi \approx 1.618$).
+
+---
+
+## 🛠️ Mission Control: Docker Commands
+
+Getting YaFaD up and running is now a one-liner.
+
+### 🚀 Start the Organism
+Build the images and start all services (Engine, DB, Dashboard, Grafana) in the background:
 ```bash
-go run setup_db.go
-cd core && cargo build --release && cd ..
+docker-compose up --build -d
 ```
 
-**Step 2: Seed a Legacy Database (For Migration Testing)**
-To test the **Strangler Fig** migration, you need a "old" database to suck data from. We provide a specialized seeding tool:
+## 📊 Monitor the Pulse
+
+Follow the engine logs in real-time to watch the "Biomass" grow:
 ```bash
-# Generates a dummy legacy database with 500K records
-go run seed_legacy_db.go 500000
+docker logs -f yafad-engine-1
 ```
 
-**Step 3: Ignite the Core Engine**
-The engine must be running to handle data decay and tier-cascading.
+## ⏸️ Pause / Stop the Mission
+
+Shut down all containers while keeping your data intact in the volumes:
 ```bash
-go run main.go
+docker-compose down
 ```
 
-**Step 4: Start Gradio User Interface with Grafana embedded**
+## 🧹 Total Reset (Clean Slate)
+
+Wipe the database and start a completely fresh test run:
 ```bash
-./start_dashboard.sh
-# pkill -f dashboard.py kills the Gradio server
+docker-compose down -v
+docker-compose up --build
 ```
+---
+
+### 🌐 Connectivity Map
+
+| Service | URL | Note |
+| --- | --- | --- |
+| **Gradio Dashboard** | `http://localhost:7888` | Main UI |
+| **Grafana** | `http://localhost:3031` | User/Pass: admin |
+| **Prometheus Metrics** | `http://localhost:2112/metrics` | Raw Data |
+| **Internal Profiling** | `http://localhost:6060/debug/pprof` | Debugging |
+
+---
+
+**YaFaD v0.9.4** is not just a tool; it's a living, breathing data architecture. Secure, scalable, and finally—easy to install.
+
+**Ready to ignite? 🧪🦁**
+---
 
 👉 Access via browser: ```http://localhost:7888```
 <p align="center">
@@ -154,85 +191,6 @@ Using the PID Controller (Proportional-Integral-Derivative), you can tune how "a
   <img src="assets/logo.png" alt="YaFaD English" width="15%">
 </a>
 
-# 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
-### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
-
-We are thrilled to announce the **v0.9.4 Release**! This update marks a paradigm shift in how you deploy and monitor your data metabolism. By fully containerizing the entire ecosystem—**Go Engine, Rust Core, PostgreSQL, Prometheus, Grafana, and Gradio**—we have officially eliminated "installation hell." 
-
-Whether you are on Arch (EndeavourOS), Debian, or MacOS, YaFaD now runs everywhere with surgical precision.
-
----
-
-## 🔥 What’s New in v0.9.4?
-
-### 1. 🐳 Full Docker Orchestration
-No more manual dependency management. Our new **Multi-Stage Docker builds** handle the heavy lifting:
-* **Rust Core:** Compiled in a high-performance builder stage.
-* **Go Engine (v1.25.7):** Runs in a stable Debian Bookworm environment.
-* **Python/Gradio Dashboard:** Pre-configured with all necessary drivers (`psycopg2`, `pandas`).
-
-### 2. 🛡️ Atomic "Bite-and-Delete" Migration
-The Legacy Migration is now "Strangler Fig" compliant. We've moved to an **atomic transaction model**:
-* **Safety First:** Data is only deleted from the Legacy DB *after* a successful commit in YaFaD.
-* **Sawtooth Control:** Migration pulses are synchronized with your **T0 Cortex** capacity to prevent system flooding.
-
-### 3. 🩺 Professional Diagnostics (The "MRI Scan")
-Integrated industrial-grade debugging tools directly into the containers:
-* **Prometheus Endpoint (`:2112`):** Real-time tracking of biomass, $\phi$-diff, and PID oscillations.
-* **Go pprof (`:6060`):** Attach a profiler to the running engine without stopping the mission.
-
-### 4. 🧠 Adaptive Physics 2.0
-The **Equilibrium Smoother** and **PID Autotuner** are now Docker-aware. They monitor DB pressure via shared volumes and adjust buoyancy factors in real-time to maintain the Golden Ratio ($\phi \approx 1.618$).
-
----
-
-## 🛠️ Mission Control: Docker Commands
-
-Getting YaFaD up and running is now a one-liner.
-
-### 🚀 Start the Organism
-Build the images and start all services (Engine, DB, Dashboard, Grafana) in the background:
-```bash
-docker-compose up --build -d
-```
-
-## 📊 Monitor the Pulse
-
-Follow the engine logs in real-time to watch the "Biomass" grow:
-```bash
-docker logs -f yafad-engine-1
-```
-
-## ⏸️ Pause / Stop the Mission
-
-Shut down all containers while keeping your data intact in the volumes:
-```bash
-docker-compose down
-```
-
-## 🧹 Total Reset (Clean Slate)
-
-Wipe the database and start a completely fresh test run:
-```bash
-docker-compose down -v
-docker-compose up --build
-```
----
-
-### 🌐 Connectivity Map
-
-| Service | URL | Note |
-| --- | --- | --- |
-| **Gradio Dashboard** | `http://localhost:7888` | Main UI |
-| **Grafana** | `http://localhost:3031` | User/Pass: admin |
-| **Prometheus Metrics** | `http://localhost:2112/metrics` | Raw Data |
-| **Internal Profiling** | `http://localhost:6060/debug/pprof` | Debugging |
-
----
-
-**YaFaD v0.9.4** is not just a tool; it's a living, breathing data architecture. Secure, scalable, and finally—easy to install.
-
-**Ready to ignite? 🧪🦁**
 ---
 
 ## 🚀 YaFaD_ai v0.9.3 is Live: The "True Osmosis" Update! 🧬
