@@ -3,84 +3,6 @@
 **YaFaD_ai** (Yet another Fast Data access) is a bio-inspired, high-performance middleware designed to redefine data management. It treats data as a **living organism** that breathes, metabolizes, and evolves. By utilizing biological principles like the **Golden Ratio ($\Phi$), Pheromone Signaling,** and **Synaptic Pruning,** YaFaD autonomously optimizes data access and infrastructure costs.
 
 ---
-## 🛠️ System Requirements & Prerequisites
-
-**1. Docker & Docker Compose**
-YaFaD v0.9.4 is fully containerized. You only need Docker installed on your host system. 
-All environment variables and library paths are pre-configured within the containers.
-
-## ⚙️ Customizing Your Metabolism: `docker-compose.yml` Guide
-
-YaFaD v0.9.4 allows you to tune the "biological" behavior of the organism directly through the orchestration layer. Below is the guide on how to modify the environment and resource allocation.
-
-### 1. Database Connectivity & Credentials
-
-If you want to change the database user or password, you must update them in **three** places within the `services` section to ensure the ecosystem remains synchronized.
-
-```yaml
-# Update these in 'postgres', 'yafad-engine', and 'dashboard'
-environment:
-  - POSTGRES_USER=eriks      # The master user
-  - POSTGRES_PASSWORD=test   # The master password
-  - DB_HOST=localhost        # Keep as localhost when using network_mode: host
-
-```
-
-### 2. Tuning Resource Throttle
-
-YaFaD is designed to be high-performance but respectful of your host system. You can limit the CPU impact of the injection and background workers:
-
-* **Edit `yafad-engine` environment:**
-* `MAX_CPU_PERCENT`: Sets the upper limit for Go routine scheduling.
-* *Example:* Set to `80` for high-speed ingestion or `30` for background "quiet" operation.
-
-
-
-### 3. TUI & Dashboard Port Mapping
-
-By default, YaFaD uses `network_mode: host` for maximum performance on Linux (EndeavourOS/Arch). If you need to change the ports because of conflicts, modify the following:
-
-| Service | Setting to Change | Default |
-| --- | --- | --- |
-| **Grafana** | `GF_SERVER_HTTP_PORT` | `3031` |
-| **Dashboard** | `GRADIO_SERVER_PORT` | `7888` |
-| **Metrics** | Engine internal | `2112` |
-
-### 4. Persistence & Shared Workspace
-
-YaFaD uses **Docker Volumes** to ensure your "Brain Weights" and "Migration Policies" survive a container restart.
-
-* **`pgdata`**: Stores the actual PostgreSQL database files.
-* **`shared_workspace`**: This is the "inter-process" memory. It contains:
-* `yafad_config.json` (Live system state)
-* `brain_weights.json` (The neural network weights)
-* `yafad_metrics.csv` (The pulse data for Grafana)
-
-
-
-> [!TIP]
-> To reset the entire system including all learned brain weights and database records, run:
-> `docker-compose down -v`
-
----
-
-## 🛠️ Step-by-Step: Applying Changes
-
-1. **Open the file:**
-`nano docker-compose.yml`
-2. **Modify the variables:**
-Change the `environment` values as needed.
-3. **Restart the Organism:**
-Since environment variables are injected at startup, you need to recreate the containers:
-```bash
-docker-compose up -d
-
-```
-
-
-*(Note: `--build` is only required if you changed the Dockerfile or the Go/Python source code.)*
-
----
 
 # 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
 ### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
@@ -170,6 +92,86 @@ docker-compose up --build
 </p>
 
 ---
+
+## 🛠️ System Requirements & Prerequisites
+
+**1. Docker & Docker Compose**
+YaFaD v0.9.4 is fully containerized. You only need Docker installed on your host system. 
+All environment variables and library paths are pre-configured within the containers.
+
+## ⚙️ Customizing Your Metabolism: `docker-compose.yml` Guide
+
+YaFaD v0.9.4 allows you to tune the "biological" behavior of the organism directly through the orchestration layer. Below is the guide on how to modify the environment and resource allocation.
+
+### 1. Database Connectivity & Credentials
+
+If you want to change the database user or password, you must update them in **three** places within the `services` section to ensure the ecosystem remains synchronized.
+
+```yaml
+# Update these in 'postgres', 'yafad-engine', and 'dashboard'
+environment:
+  - POSTGRES_USER=eriks      # The master user
+  - POSTGRES_PASSWORD=test   # The master password
+  - DB_HOST=localhost        # Keep as localhost when using network_mode: host
+
+```
+
+### 2. Tuning Resource Throttle
+
+YaFaD is designed to be high-performance but respectful of your host system. You can limit the CPU impact of the injection and background workers:
+
+* **Edit `yafad-engine` environment:**
+* `MAX_CPU_PERCENT`: Sets the upper limit for Go routine scheduling.
+* *Example:* Set to `80` for high-speed ingestion or `30` for background "quiet" operation.
+
+
+
+### 3. TUI & Dashboard Port Mapping
+
+By default, YaFaD uses `network_mode: host` for maximum performance on Linux (EndeavourOS/Arch). If you need to change the ports because of conflicts, modify the following:
+
+| Service | Setting to Change | Default |
+| --- | --- | --- |
+| **Grafana** | `GF_SERVER_HTTP_PORT` | `3031` |
+| **Dashboard** | `GRADIO_SERVER_PORT` | `7888` |
+| **Metrics** | Engine internal | `2112` |
+
+### 4. Persistence & Shared Workspace
+
+YaFaD uses **Docker Volumes** to ensure your "Brain Weights" and "Migration Policies" survive a container restart.
+
+* **`pgdata`**: Stores the actual PostgreSQL database files.
+* **`shared_workspace`**: This is the "inter-process" memory. It contains:
+* `yafad_config.json` (Live system state)
+* `brain_weights.json` (The neural network weights)
+* `yafad_metrics.csv` (The pulse data for Grafana)
+
+
+
+> [!TIP]
+> To reset the entire system including all learned brain weights and database records, run:
+> `docker-compose down -v`
+
+---
+
+## 🛠️ Step-by-Step: Applying Changes
+
+1. **Open the file:**
+`nano docker-compose.yml`
+2. **Modify the variables:**
+Change the `environment` values as needed.
+3. **Restart the Organism:**
+Since environment variables are injected at startup, you need to recreate the containers:
+```bash
+docker-compose up -d
+
+```
+
+
+*(Note: `--build` is only required if you changed the Dockerfile or the Go/Python source code.)*
+
+---
+
 ## 🧠 How YaFaD Works: Visual Deep Dive
 The following concepts represent the **Autonomous Data Metabolism** of YaFaD_ai.
 
