@@ -9,6 +9,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -16,13 +17,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// CONFIGURATION
+// --- CONFIGURATION ---
 const (
-	// Wenn Table 4 diese Größe überschreitet, wird in das Fraktal-Archiv ausgelagert
-	TABLE4_SOFT_LIMIT = 50000
+	PHI         = 1.61803398875
+	BASE_LAMBDA = 0.005 // Basis-Zerfallsrate (Live-System)
+	EPSILON     = 0.001 // Der Ereignishorizont (Verdampfung)
 
-	// Zeit-Dilatation: Das Archiv zerfällt 10x langsamer als das Live-System
-	ARCHIVE_LAMBDA = 0.0005
+	// Sicherheitsnetz für den Boot-Vorgang
+	MIN_DEEP_CAPACITY = 20000
 )
 
 func main() {
@@ -34,7 +36,11 @@ func main() {
 	if dbPass == "" {
 		dbPass = "test"
 	}
-	connStr := fmt.Sprintf("postgres://%s:%s@localhost:5432/yafad_test?sslmode=disable", dbUser, dbPass)
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:5432/yafad_test?sslmode=disable", dbUser, dbPass, dbHost)
 
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, connStr)
@@ -43,40 +49,49 @@ func main() {
 	}
 	defer pool.Close()
 
-	fmt.Println("❄️  YaFaD_ai FRACTAL ENGINE: Online.")
-	fmt.Printf("🛡️  Guarding 'table4' (Threshold: %d records)\n", TABLE4_SOFT_LIMIT)
+	// Initiales Setup: Stats-Tabelle und Basis-Archive (0-4) sicherstellen
+	ensureStatsTable(ctx, pool)
+	for i := 0; i <= 4; i++ {
+		ensureArchiveTableExists(ctx, pool, i)
+	}
+
+	fmt.Println("🌌 YaFaD_ai FRACTAL ENGINE V2: Online.")
+	fmt.Printf("🕳️  Event Horizon (Epsilon) set to: %.4f\n", EPSILON)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// SYSTEM A: Das Überdruckventil (Table4 -> Archive0)
+	// SYSTEM A: Das Überdruckventil (Deep Archive -> Archive0)
+	// Dieses System behalten wir exakt so bei, wie es in deiner Version gut funktioniert hat!
 	go func() {
 		defer wg.Done()
-		monitorAndRelievePressure(pool)
+		monitorDeepArchive(pool)
 	}()
 
-	// SYSTEM B: Der Tiefen-Zyklus (Archive0 -> Archive4)
+	// SYSTEM B: Der Unendliche Crawler (Archive0 -> ArchiveN -> Evaporation)
 	go func() {
 		defer wg.Done()
-		var subWg sync.WaitGroup
-		subWg.Add(4)
-		for i := 0; i < 4; i++ {
-			go func(tier int) {
-				defer subWg.Done()
-				runDeepDecay(pool, tier)
-			}(i)
-		}
-		subWg.Wait()
+		runFractalCrawler(pool)
 	}()
 
 	wg.Wait()
 }
 
-// --- SYSTEM A: Das Ventil (Repariert: conn busy Fix) ---
-func monitorAndRelievePressure(pool *pgxpool.Pool) {
+// Prüft geräuschlos, ob eine Tabelle in Postgres existiert
+func tableExists(ctx context.Context, pool *pgxpool.Pool, tableName string) bool {
+	var exists bool
+	query := "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)"
+	err := pool.QueryRow(ctx, query, tableName).Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists
+}
+
+// --- SYSTEM A: Das Überdruckventil (deep_archive -> archive0) ---
+func monitorDeepArchive(pool *pgxpool.Pool) {
 	ctx := context.Background()
 
-	// Kleine Struktur, um die Daten kurz zwischenzuspeichern
 	type Candidate struct {
 		Id           string
 		Payload      string
@@ -85,105 +100,202 @@ func monitorAndRelievePressure(pool *pgxpool.Pool) {
 	}
 
 	for {
-		var count int
-		pool.QueryRow(ctx, "SELECT count(*) FROM table4").Scan(&count)
+		var countT4, countDeep int
 
-		if count > TABLE4_SOFT_LIMIT {
-			overflow := count - TABLE4_SOFT_LIMIT
-			batchSize := 1000
+		pool.QueryRow(ctx, "SELECT count(*) FROM table4").Scan(&countT4)
+		pool.QueryRow(ctx, "SELECT count(*) FROM deep_archive").Scan(&countDeep)
+
+		deepThreshold := int(float64(countT4) * PHI)
+		if deepThreshold < MIN_DEEP_CAPACITY {
+			deepThreshold = MIN_DEEP_CAPACITY
+		}
+
+		if countDeep > deepThreshold {
+			overflow := countDeep - deepThreshold
+			batchSize := 2000
 			if overflow < batchSize {
 				batchSize = overflow
 			}
 
-			fmt.Printf("⚠️  Table4 Overload (%d/%d). Draining %d records...\n", count, TABLE4_SOFT_LIMIT, batchSize)
+			fmt.Printf("⚠️  Deep Archive Overload (%d/%d). Draining %d records to Archive0...\n", countDeep, deepThreshold, batchSize)
 
 			tx, err := pool.Begin(ctx)
 			if err != nil {
-				fmt.Printf("❌ Transaktions-Fehler: %v\n", err)
 				time.Sleep(1 * time.Second)
 				continue
 			}
 
-			// SCHRITT 1: NUR LESEN (In den Speicher laden)
-			rows, _ := tx.Query(ctx, fmt.Sprintf("SELECT id, payload, utility_index, last_activity FROM table4 ORDER BY utility_index ASC LIMIT %d", batchSize))
+			rows, _ := tx.Query(ctx, fmt.Sprintf("SELECT id, payload, utility_index, last_activity FROM deep_archive ORDER BY utility_index ASC LIMIT %d", batchSize))
 
 			var candidates []Candidate
-
 			for rows.Next() {
 				var c Candidate
 				rows.Scan(&c.Id, &c.Payload, &c.Utility, &c.LastActivity)
 				candidates = append(candidates, c)
 			}
-			rows.Close() // <--- WICHTIG: Hier geben wir die "Lese-Verbindung" frei!
+			rows.Close()
 
-			// SCHRITT 2: NUR SCHREIBEN (Jetzt ist die Leitung frei für Inserts)
 			moved := 0
-			var errCount int
+			lambda := BASE_LAMBDA / PHI
 
 			for _, c := range candidates {
-				// Insert ins Archiv
+				dt := time.Since(c.LastActivity).Hours()
+				uNow := float64(C.calculate_decay(C.double(c.Utility), C.double(lambda), C.double(dt)))
+
 				_, err := tx.Exec(ctx,
 					"INSERT INTO archive0 (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
-					c.Id, c.Payload, c.Utility, c.LastActivity)
+					c.Id, c.Payload, uNow, c.LastActivity)
 
-				if err != nil {
-					if errCount < 5 {
-						fmt.Printf("❌ INSERT ERROR bei ID %s: %v\n", c.Id, err)
-					}
-					errCount++
-				} else {
-					// Löschen aus Table4
-					tx.Exec(ctx, "DELETE FROM table4 WHERE id = $1", c.Id)
+				if err == nil {
+					tx.Exec(ctx, "DELETE FROM deep_archive WHERE id = $1", c.Id)
 					moved++
 				}
 			}
 
 			tx.Commit(ctx)
-			fmt.Printf("❄️  Moved %d items to Archive0. (Errors: %d)\n", moved, errCount)
+			fmt.Printf("⬇️  Moved %d items from Deep Archive to Archive0.\n", moved)
 		}
 
 		time.Sleep(5 * time.Second)
 	}
 }
 
-// --- SYSTEM B: Der Tiefen-Zyklus ---
-func runDeepDecay(pool *pgxpool.Pool, tier int) {
+// --- SYSTEM B: Der unendliche Fraktal-Crawler ---
+func runFractalCrawler(pool *pgxpool.Pool) {
 	ctx := context.Background()
-	source := fmt.Sprintf("archive%d", tier)
-	target := fmt.Sprintf("archive%d", tier+1)
-	threshold := 0.1
 
 	for {
-		rows, err := pool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s TABLESAMPLE SYSTEM(1) LIMIT 100", source))
-		if err == nil {
-			workDone := false
-			for rows.Next() {
-				var id, payload string
-				var uLast float64
-				var lastActivity time.Time
-				rows.Scan(&id, &uLast, &lastActivity, &payload)
+		tier := 0
+		for {
+			sourceTable := fmt.Sprintf("archive%d", tier)
+			targetTable := fmt.Sprintf("archive%d", tier+1)
 
-				deltaT := time.Since(lastActivity).Hours()
-				uNow := float64(C.calculate_decay(C.double(uLast), C.double(ARCHIVE_LAMBDA), C.double(deltaT)))
+			prevTable := "deep_archive"
+			if tier > 0 {
+				prevTable = fmt.Sprintf("archive%d", tier-1)
+			}
 
-				if uNow < threshold {
-					tx, _ := pool.Begin(ctx)
-					_, errDel := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", source), id)
-					if errDel == nil {
-						tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4)", target),
-							id, payload, uNow, lastActivity)
-						tx.Commit(ctx)
-						workDone = true
-					} else {
-						tx.Rollback(ctx)
+			// LOG-SPAM SCHUTZ: Prüfen, ob die Tabellen überhaupt existieren!
+			if !tableExists(ctx, pool, prevTable) || !tableExists(ctx, pool, sourceTable) {
+				break // Wir sind am unteren Ende des Fraktals angekommen
+			}
+
+			var countPrev, countCurrent int
+			_ = pool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", prevTable)).Scan(&countPrev)
+			_ = pool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", sourceTable)).Scan(&countCurrent)
+
+			capacity := int(float64(countPrev) * PHI)
+			if capacity < 1000 {
+				capacity = 1000 // Kleiner Puffer
+			}
+			isOverloaded := countCurrent > capacity
+
+			lambda := BASE_LAMBDA / math.Pow(PHI, float64(tier+2))
+
+			rows, err := pool.Query(ctx, fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s ORDER BY utility_index ASC LIMIT 500", sourceTable))
+
+			if err == nil {
+				var ids, payloads []string
+				var uLasts []float64
+				var lastActs []time.Time
+
+				for rows.Next() {
+					var id, payload string
+					var uLast float64
+					var lastActivity time.Time
+					rows.Scan(&id, &uLast, &lastActivity, &payload)
+
+					ids = append(ids, id)
+					payloads = append(payloads, payload)
+					uLasts = append(uLasts, uLast)
+					lastActs = append(lastActs, lastActivity)
+				}
+				rows.Close()
+
+				evaporatedCount := 0
+				movedCount := 0
+				var bytesEvaporated int64 = 0
+
+				for i := 0; i < len(ids); i++ {
+					dt := time.Since(lastActs[i]).Hours()
+					uNow := float64(C.calculate_decay(C.double(uLasts[i]), C.double(lambda), C.double(dt)))
+
+					if uNow < EPSILON {
+						// ☠️ EREIGNISHORIZONT ERREICHT: VERDAMPFEN
+						tx, _ := pool.Begin(ctx)
+						_, errDel := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), ids[i])
+						if errDel == nil {
+							saved := int64(len(payloads[i]) + len(ids[i]))
+							bytesEvaporated += saved
+							tx.Exec(ctx, "UPDATE yafad_stats SET value = value + $1 WHERE key = 'evaporated_bytes'", float64(saved))
+							tx.Commit(ctx)
+							evaporatedCount++
+						} else {
+							tx.Rollback(ctx)
+						}
+
+					} else if isOverloaded {
+						// ⬇️ ZU VIEL DRUCK: EINE EBENE TIEFER FALLEN
+						// Hier erschaffen wir bei Bedarf organisch archive5, archive6 usw.
+						ensureArchiveTableExists(ctx, pool, tier+1)
+
+						tx, _ := pool.Begin(ctx)
+						_, errDel := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE id = $1", sourceTable), ids[i])
+						if errDel == nil {
+							tx.Exec(ctx, fmt.Sprintf("INSERT INTO %s (id, payload, utility_index, last_activity) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING", targetTable),
+								ids[i], payloads[i], uNow, lastActs[i])
+							tx.Commit(ctx)
+							movedCount++
+						} else {
+							tx.Rollback(ctx)
+						}
 					}
 				}
+
+				if evaporatedCount > 0 {
+					fmt.Printf("💨 [%s] Hawking Radiation: Evaporated %d records (%d bytes reclaimed).\n", sourceTable, evaporatedCount, bytesEvaporated)
+				}
+				if movedCount > 0 {
+					fmt.Printf("📉 [%s] Gravity Fall: %d records fell into %s.\n", sourceTable, movedCount, targetTable)
+				}
 			}
-			rows.Close()
-			if workDone {
-				fmt.Printf("📉 [Deep Decay] %s -> %s\n", source, target)
+
+			tier++ // Nächste Ebene prüfen
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+}
+
+// --- HILFSFUNKTIONEN FÜR SCHEMA & STATS ---
+
+func ensureStatsTable(ctx context.Context, pool *pgxpool.Pool) {
+	query := `CREATE TABLE IF NOT EXISTS yafad_stats (key TEXT PRIMARY KEY, value FLOAT);`
+	pool.Exec(ctx, query)
+	pool.Exec(ctx, `INSERT INTO yafad_stats (key, value) VALUES ('evaporated_bytes', 0) ON CONFLICT DO NOTHING;`)
+}
+
+func ensureArchiveTableExists(ctx context.Context, pool *pgxpool.Pool, tier int) {
+	table := fmt.Sprintf("archive%d", tier)
+
+	// Prüfen, ob die Tabelle schon existiert, bevor wir SQL-Fehler riskieren
+	if !tableExists(ctx, pool, table) {
+		query := fmt.Sprintf(`
+			CREATE TABLE %s (
+				id TEXT PRIMARY KEY,
+				payload TEXT,
+				utility_index DOUBLE PRECISION,
+				last_activity TIMESTAMP
+			);`, table)
+
+		_, err := pool.Exec(ctx, query)
+		if err == nil {
+			indexQuery := fmt.Sprintf("CREATE INDEX idx_%s_utility ON %s (utility_index ASC);", table, table)
+			pool.Exec(ctx, indexQuery)
+			// Wenn es eine Ebene > 4 ist, loggen wir das organische Wachstum
+			if tier > 4 {
+				fmt.Printf("🏗️  Fractal Expansion: Spawned new tier '%s'!\n", table)
 			}
 		}
-		time.Sleep(10 * time.Second)
 	}
 }

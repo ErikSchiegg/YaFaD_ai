@@ -5,6 +5,8 @@ COPY . .
 # Wir bauen den Proxy und den Legacy Generator
 RUN CGO_ENABLED=0 go build -o yafad_proxy yafad_proxy.go
 RUN CGO_ENABLED=0 go build -o legacy_gen seed_legacy_db.go 
+# Baue den User Simulator aus der user_simulator.go und nenne ihn 'yafad_sim'
+RUN CGO_ENABLED=0 go build -o yafad_sim user_simulator.go
 
 # Stage 2: Python Dashboard
 FROM python:3.11-slim
@@ -18,6 +20,9 @@ COPY assets/ ./assets/
 # Hole die fertigen Programme aus Stage 1
 COPY --from=builder /app/yafad_proxy .
 COPY --from=builder /app/legacy_gen .
+
+# Kopiere den gerade gebauten Simulator in das finale Image
+COPY --from=builder /app/yafad_sim .
 
 RUN pip install --no-cache-dir gradio psycopg2-binary pandas
 

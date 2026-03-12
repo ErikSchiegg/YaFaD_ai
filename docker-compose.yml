@@ -17,8 +17,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_SERVER_HTTP_PORT=3031
+      - GF_INSTALL_PLUGINS=marcusolsson-csv-datasource
+      - GF_LOG_LEVEL=warn   # <--- NEU: Zeigt nur noch Warnungen und Fehler an
     volumes:
       - grafana_data:/var/lib/grafana
+      - shared_workspace:/app/shared
 
   # 3. YaFaD Engine
   yafad-engine:
@@ -50,6 +53,19 @@ services:
       - shared_workspace:/app/shared
     depends_on:
       - yafad-engine
+
+  # 5. The Fractal Time Dilation Engine
+  fractal-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.fractal
+    network_mode: "host" 
+    environment:
+      - DB_USER=eriks
+      - DB_PASSWORD=test
+      - DB_HOST=localhost 
+    depends_on:
+      - postgres
 
 volumes:
   pgdata:

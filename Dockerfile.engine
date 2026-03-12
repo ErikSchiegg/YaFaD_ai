@@ -8,6 +8,8 @@ RUN cd core && cargo build --release
 ENV LD_LIBRARY_PATH=/app/core/target/release
 ENV CGO_ENABLED=1
 RUN go build -o yafad_engine main.go
+# NEU: Wir kompilieren den user_simulator.go
+RUN CGO_ENABLED=0 go build -o yafad_sim user_simulator.go
 
 # Stage 2: Runtime mit Go, Python und allen Treibern
 FROM golang:1.25-bookworm

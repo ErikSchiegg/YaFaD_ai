@@ -6,9 +6,9 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -145,47 +145,54 @@ func createAndFill(ctx context.Context, pool *pgxpool.Pool, tableName string, ro
 	}
 	fmt.Printf("🔨 Creating table '%s'... ", tableName)
 
-	_, err := pool.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+	// Tabelle zurücksetzen
+	_, _ = pool.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", tableName))
+	_, err := pool.Exec(ctx, schema)
 	if err != nil {
 		panic(err)
 	}
-	_, err = pool.Exec(ctx, schema)
+
+	fmt.Printf("Bulk inserting %d rows... ", rows)
+
+	// Vorbereiten der Spalten und Daten-Generator
+	var columns []string
+	var rowData [][]any
+
+	switch tableName {
+	case "customers":
+		columns = []string{"username", "email", "created_at", "last_login", "preferences"}
+		for i := 0; i < rows; i++ {
+			rowData = append(rowData, []any{
+				fmt.Sprintf("user_%d", i),
+				fmt.Sprintf("user_%d@example.com", i),
+				time.Now(),
+				time.Now(),
+				map[string]string{"theme": "dark"},
+			})
+		}
+	case "orders":
+		columns = []string{"user_id", "blob_data", "expires_at"} // UUID wird durch DEFAULT generiert
+		for i := 0; i < rows; i++ {
+			rowData = append(rowData, []any{rand.Intn(1000), fmt.Sprintf("junk_%d", i), time.Now()})
+		}
+	case "system_logs":
+		columns = []string{"action", "details", "timestamp"}
+		for i := 0; i < rows; i++ {
+			rowData = append(rowData, []any{"LOGIN_ATTEMPT", map[string]string{"ip": "127.0.0.1"}, time.Now()})
+		}
+	}
+
+	// Der "CopyFrom" Zauber
+	copyCount, err := pool.CopyFrom(
+		ctx,
+		pgx.Identifier{tableName},
+		columns,
+		pgx.CopyFromRows(rowData),
+	)
+
 	if err != nil {
-		panic(err)
+		fmt.Printf("❌ Bulk Insert failed: %v\n", err)
+	} else {
+		fmt.Printf("Done (%d rows).\n", copyCount)
 	}
-
-	fmt.Printf("Inserting %d rows ", rows)
-
-	batchSize := 10000
-	totalInserted := 0
-
-	for totalInserted < rows {
-		var values []string
-		for i := 0; i < batchSize && totalInserted < rows; i++ {
-			var rowVal string
-			if tableName == "customers" {
-				rowVal = fmt.Sprintf("('user_%d', 'user_%d@example.com', NOW(), NOW(), '{\"theme\": \"dark\"}')", totalInserted, totalInserted)
-			} else if tableName == "orders" {
-				rowVal = fmt.Sprintf("(gen_random_uuid(), %d, 'junk_data_%d', NOW())", rand.Intn(1000), rand.Intn(9999))
-			} else { // system_logs
-				rowVal = fmt.Sprintf("('LOGIN_ATTEMPT', '{\"ip\": \"192.168.1.%d\"}', NOW())", rand.Intn(255))
-			}
-			values = append(values, rowVal)
-			totalInserted++
-		}
-
-		if len(values) > 0 {
-			var query string
-			if tableName == "customers" {
-				query = fmt.Sprintf("INSERT INTO %s (username, email, created_at, last_login, preferences) VALUES %s", tableName, strings.Join(values, ","))
-			} else if tableName == "system_logs" {
-				query = fmt.Sprintf("INSERT INTO %s (action, details, timestamp) VALUES %s", tableName, strings.Join(values, ","))
-			} else {
-				query = fmt.Sprintf("INSERT INTO %s (session_id, user_id, blob_data, expires_at) VALUES %s", tableName, strings.Join(values, ","))
-			}
-			_, _ = pool.Exec(ctx, query)
-			fmt.Print(".")
-		}
-	}
-	fmt.Println(" Done.")
 }

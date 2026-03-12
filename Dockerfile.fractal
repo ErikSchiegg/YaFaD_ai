@@ -1,0 +1,29 @@
+# Stage 1: Build Rust Core & Go Binary
+FROM golang:1.25-bookworm AS builder
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+COPY . .
+
+# Build Rust Core (falls fractal_decay darauf zugreift)
+RUN cd core && cargo build --release
+
+# Build Fractal Engine
+ENV LD_LIBRARY_PATH=/app/core/target/release
+ENV CGO_ENABLED=1
+RUN go build -o yafad_fractal fractal_decay.go
+
+# Stage 2: Lean Runtime
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /app/yafad_fractal .
+COPY --from=builder /app/core/target/release/libyafad_core.so ./core/target/release/
+
+ENV LD_LIBRARY_PATH=/app/core/target/release
+
+CMD ["./yafad_fractal"]

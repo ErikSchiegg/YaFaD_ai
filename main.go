@@ -540,7 +540,7 @@ func main() {
 
 				if flush {
 					fmt.Println("🧹 FLUSHING TABLES...")
-					if _, err := hotPool.Exec(ctx, "TRUNCATE table0, table1, table2, table3, table4, deep_archive"); err != nil {
+					if _, err := hotPool.Exec(ctx, "TRUNCATE table0, table1, table2, table3, table4, deep_archive, archive0, archive1, archive3, archive4"); err != nil {
 						slog.Error("Failed to flush tables", "error", err)
 					} else {
 						fmt.Println("✅ Tables flushed.")
@@ -680,12 +680,41 @@ func optimizePIDParams() {
 	configMu.Unlock()
 }
 
+// -- wenn nötig, Tabellen erzeugen
+func ensureTablesExist(ctx context.Context, pool *pgxpool.Pool) {
+	tables := []string{"table0", "table1", "table2", "table3", "table4", "deep_archive", "archive0", "archive1", "archive2", "archive3", "archive4"}
+
+	for _, table := range tables {
+		// Tabelle erstellen
+		query := fmt.Sprintf(`
+            CREATE TABLE IF NOT EXISTS %s (
+                id TEXT PRIMARY KEY,
+                payload TEXT,
+                utility_index DOUBLE PRECISION,
+                last_activity TIMESTAMP
+            );`, table)
+
+		_, err := pool.Exec(ctx, query)
+		if err != nil {
+			fmt.Printf("❌ Fehler beim Erstellen der Tabelle %s: %v\n", table, err)
+		}
+
+		// Index für "Coldest First" Logik erstellen (SEHR WICHTIG!)
+		indexQuery := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_utility ON %s (utility_index ASC);", table, table)
+		_, err = pool.Exec(ctx, indexQuery)
+		if err != nil {
+			fmt.Printf("❌ Fehler beim Erstellen des Index für %s: %v\n", table, err)
+		}
+	}
+	fmt.Println("🏗️  Database Schema verified (T0-T4, Deep Archive & Indices).")
+}
+
 // --- WORKER LOGIC (Dynamic Buoyancy) ---
 func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDController) {
 	sourceTable := fmt.Sprintf("table%d", tier)
 	nextTable := fmt.Sprintf("table%d", tier+1)
 	if tier == 4 {
-		nextTable = "deep_archive"
+		nextTable = "archive0"
 	}
 
 	minSleep := 10 * time.Millisecond
@@ -798,14 +827,9 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		}
 
 		if count > 0 {
-			// ---> NEU: Biologischer Radar-Sweep (Ohne extra Import!) <---
-			randOffset := 0
-			if count > 2000 {
-				// Wir nutzen einfach die Nanosekunden der Uhrzeit als Zufallsgenerator
-				randOffset = int(time.Now().UnixNano() % int64(count-1000))
-			}
-
-			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s LIMIT 1000 OFFSET %d", sourceTable, randOffset)
+			// ---> NEUE LOGIK (Coldest First Präzision) <---
+			// Wir ignorieren Zufall und holen IMMER die 1000 Datensätze mit dem niedrigsten Utility Index.
+			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s ORDER BY utility_index ASC LIMIT 1000", sourceTable)
 			rows, err := sourcePool.Query(ctx, query)
 			if err == nil {
 				var batch []Record
@@ -889,7 +913,7 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("🔨 Preparing and Compiling Generator...")
 
-	// ---> NEU: Zombie-Prozesse killen und alte Datei löschen, damit 'go build' nicht einfriert!
+	// Zombie-Prozesse killen und alte Datei löschen, damit 'go build' nicht einfriert!
 	exec.Command("pkill", "-f", "yafad_sim").Run()
 	os.Remove("yafad_sim")
 
@@ -907,7 +931,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	batchSize := 10000
 	remaining := total - done
 
-	// ---> NEU: Transparente Ausgabe der Zahlen
+	// Transparente Ausgabe der Zahlen
 	fmt.Printf("   -> Check: Target=%d | Done=%d | Remaining=%d\n", total, done, remaining)
 
 	if remaining <= 0 {
@@ -921,8 +945,12 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records (Remaining: %d)\n", total, remaining)
 
+	// ---> NEU: Generiere einen einzigartigen Basis-Offset aus der aktuellen Zeit!
+	// Dadurch kollidieren IDs ("user_...") beim "Add Records" nie wieder.
+	baseOffset := int(time.Now().Unix())
+
 	for remaining > 0 {
-		// NEU: Sofort-Stopp wenn RunState sich ändert oder Target ungültig wird
+		// Sofort-Stopp wenn RunState sich ändert oder Target ungültig wird
 		configMu.RLock()
 		currentStatus := globalConfig.RunState
 		currentTarget := globalConfig.InjectTotal
@@ -983,11 +1011,13 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 			if remaining < batchSize {
 				currentBatch = remaining
 			}
-			offset := total - remaining
+
+			// ---> NEU: Der Offset setzt sich jetzt aus dem Zeitstempel und dem Fortschritt zusammen
+			offset := baseOffset + (total - remaining)
 
 			fmt.Printf("\r🔥 Injecting... [%d left] T0: %.1f%% (Target %.0f%%)    ", remaining, fillPct, wHigh)
 
-			// ---> DOCKER ANPASSUNG: DB_HOST an den Simulator weitergeben <---
+			// DOCKER ANPASSUNG: DB_HOST an den Simulator weitergeben
 			dbHost := os.Getenv("DB_HOST")
 			if dbHost == "" {
 				dbHost = "localhost"
