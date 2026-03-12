@@ -25,6 +25,29 @@ type MigrationPolicy struct {
 const CONFIG_FILE = "shared/yafad_config.json"
 const POLICY_FILE = "shared/migration_policy.json"
 
+// Hilfsfunktion zur Erstellung eines optimierten Pools
+func createOptimizedPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// PERFORMANCE & PERSISTENZ FIX
+	// Verhindert ständiges Neu-Verbinden und DNS-Lookups (pprof peak fix)
+	config.MaxConns = 20                       // Maximale parallele Verbindungen
+	config.MinConns = 5                        // Mindestens X Verbindungen "warm" halten
+	config.MaxConnLifetime = time.Hour         // Maximale Lebensdauer einer Verbindung
+	config.MaxConnIdleTime = 30 * time.Minute  // Wie lange darf eine Verbindung ungenutzt bleiben?
+	config.HealthCheckPeriod = 1 * time.Minute // Prüft im Hintergrund, ob die Connection noch lebt
+
+	// DNS Fix: Falls "localhost" angegeben wurde, auf IP zwingen
+	if config.ConnConfig.Host == "localhost" {
+		config.ConnConfig.Host = "127.0.0.1"
+	}
+
+	return pgxpool.NewWithConfig(ctx, config)
+}
+
 func waitIfPaused() {
 	for {
 		data, err := os.ReadFile(CONFIG_FILE)
@@ -60,18 +83,21 @@ func main() {
 	}
 	targetPeak := int(float64(t0Cap) * 1.5)
 
+	// Legacy DB Connection String
 	legDB := policy.LegacyDB
+	legacyHost := fmt.Sprintf("%v", legDB["host"])
 	legConnStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		legDB["user"], legDB["password"], legDB["host"], legDB["port"], legDB["dbname"])
+		legDB["user"], legDB["password"], legacyHost, legDB["port"], legDB["dbname"])
 
 	ctx := context.Background()
-	legPool, err := pgxpool.New(ctx, legConnStr)
+	legPool, err := createOptimizedPool(ctx, legConnStr)
 	if err != nil {
-		fmt.Printf("❌ Legacy DB connection failed: %v\n", err)
+		fmt.Printf("❌ Legacy DB pool initialization failed: %v\n", err)
 		return
 	}
 	defer legPool.Close()
 
+	// YaFaD DB Connection String
 	yafadUser := os.Getenv("DB_USER")
 	if yafadUser == "" {
 		yafadUser = "eriks"
@@ -86,15 +112,15 @@ func main() {
 	}
 
 	yafadConnStr := fmt.Sprintf("postgres://%s:%s@%s:5432/yafad_test?sslmode=disable", yafadUser, yafadPass, yafadHost)
-	yafadPool, err := pgxpool.New(ctx, yafadConnStr)
+	yafadPool, err := createOptimizedPool(ctx, yafadConnStr)
 	if err != nil {
-		fmt.Printf("❌ YaFaD DB connection failed: %v\n", err)
+		fmt.Printf("❌ YaFaD DB pool initialization failed: %v\n", err)
 		return
 	}
 	defer yafadPool.Close()
 
 	fmt.Println("==================================================")
-	fmt.Printf("🌿 STRANGLER FIG PROXY: ATOMIC MIGRATION MODE\n")
+	fmt.Printf("🌿 STRANGLER FIG PROXY: ATOMIC PERSISTENT MODE\n")
 	fmt.Printf("🎯 Target T0 Cap:  %d | Peak: %d\n", t0Cap, targetPeak)
 	fmt.Println("==================================================")
 
@@ -109,30 +135,38 @@ func main() {
 		for {
 			waitIfPaused()
 
-			// 1. Wie viel Arbeit ist noch in der Legacy DB?
+			// RELIABILITY FIX: Stand prüfen mit Context-Timeout (verhindert Hänger am Ende)
 			var remainingInLegacy int
-			err = legPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", tableName)).Scan(&remainingInLegacy)
-			if err != nil || remainingInLegacy == 0 {
-				break // Fertig mit dieser Tabelle
+			ctxCheck, cancel := context.WithTimeout(ctx, 3*time.Second)
+			err = legPool.QueryRow(ctxCheck, fmt.Sprintf("SELECT count(*) FROM %s", tableName)).Scan(&remainingInLegacy)
+			cancel()
+
+			if err != nil {
+				fmt.Printf("⚠️  Check error (Retrying...): %v\n", err)
+				time.Sleep(2 * time.Second)
+				continue
 			}
 
-			// 2. Warten bis T0 Platz hat (unter t0Cap sinkt)
+			if remainingInLegacy == 0 {
+				fmt.Printf("🏁 Table '%s' is verified empty. Mission accomplished.\n", tableName)
+				break
+			}
+
+			// Warten bis T0 Platz hat
 			currentT0 := waitForDigestion(ctx, yafadPool, t0Cap)
 
-			// 3. Berechnen wie viel wir in diesem "Atemzug" holen können
-			// Wir füllen bis exakt targetPeak auf
+			// Batch-Größe berechnen
 			batchSize := targetPeak - currentT0
 			if batchSize <= 0 {
 				batchSize = 1000
-			} // Sicherheits-Minimum
+			}
 			if batchSize > remainingInLegacy {
 				batchSize = remainingInLegacy
 			}
 
-			fmt.Printf("📐 Space in T0: %d. Fetching next %d records from legacy...\n", targetPeak-currentT0, batchSize)
+			fmt.Printf("📐 Space in T0: %d. Fetching next %d records...\n", targetPeak-currentT0, batchSize)
 
-			// 4. ATOMARER MOVE: Wir nutzen CTIDs (Postgres interne IDs) um exakt diese Zeilen zu löschen
-			// Das verhindert, dass wir Zeilen löschen, die wir gar nicht gelesen haben.
+			// ATOMARER MOVE (CTIDs)
 			moveQuery := fmt.Sprintf(`
 				WITH target_batch AS (
 					SELECT ctid, row_to_json(t) as data 
@@ -168,27 +202,21 @@ func main() {
 			rows.Close()
 
 			if len(batchData) > 0 {
-				// In YaFaD schreiben
-				success := flushBatchToYaFaD(ctx, yafadPool, batchData)
-
-				if success {
-					// NUR wenn YaFaD OK gegeben hat, löschen wir exakt diese Zeilen aus Legacy
+				if flushBatchToYaFaD(ctx, yafadPool, batchData) {
 					_, err := legPool.Exec(ctx, fmt.Sprintf("DELETE FROM %s WHERE ctid = ANY($1)", tableName), ctidsToDrop)
 					if err != nil {
-						fmt.Printf("⚠️ Delete error in Legacy: %v\n", err)
+						fmt.Printf("⚠️ Delete error: %v\n", err)
 					} else {
-						fmt.Printf("✅ Pulse: %d records moved & cleared from legacy.\n", len(batchData))
+						fmt.Printf("✅ Pulse: %d records moved.\n", len(batchData))
 					}
 				}
 			}
 		}
-		fmt.Printf("🎉 Table '%s' is now empty in legacy DB.\n", tableName)
 	}
 
 	fmt.Println("\n🎉 MIGRATION FINISHED. STRANGLER FIG DISENGAGED.")
 }
 
-// Gibt bool zurück, damit wir wissen ob wir in Legacy löschen dürfen
 func flushBatchToYaFaD(ctx context.Context, pool *pgxpool.Pool, data [][]any) bool {
 	_, err := pool.CopyFrom(
 		ctx,
@@ -213,11 +241,11 @@ func flushYaFaDTables(ctx context.Context, pool *pgxpool.Pool) {
 func waitForDigestion(ctx context.Context, pool *pgxpool.Pool, t0Cap int) int {
 	for {
 		var currentT0 int
-		pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&currentT0)
-		if currentT0 < t0Cap {
+		err := pool.QueryRow(ctx, "SELECT count(*) FROM table0").Scan(&currentT0)
+		if err == nil && currentT0 < t0Cap {
 			return currentT0
 		}
-		fmt.Printf("   ⏳ T0 Full (%d). Waiting for background workers to drain...\n", currentT0)
+		fmt.Printf("   ⏳ T0 Full (%d). Waiting for drain...\n", currentT0)
 		time.Sleep(2 * time.Second)
 	}
 }

@@ -18,6 +18,8 @@ DEFAULT_GRAFANA = "http://localhost:3030/d/adf7cqm/yafad-ai-biomass-tiers?orgId=
 
 PROXY_PROCESS = None
 PROXY_LOG_FILE = None 
+SIM_PROCESS = None
+SIM_LOG_FILE = None
 
 def get_current_config():
     default_conf = {
@@ -32,13 +34,18 @@ def get_current_config():
         "flush_on_start": False,
         "grafana_url": DEFAULT_GRAFANA,
         "buoyancy_factor": 0.7,
-        "watermarks": {"high": 150.0, "low": 120.0}
+        "watermarks": {"high": 150.0, "low": 120.0},
+        # ---> NEU: Epsilon & Compliance Settings <---
+        "epsilon": 0.001,
+        "compliance_action": "Delete (Evaporate)",
+        "compliance_path": "./shared/compliance_archive"
     }
     try:
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r') as f:
                 data = json.load(f)
                 default_conf.update(data)
+                # Nested Dictionaries sicher überschreiben
                 if "watermarks" in data: default_conf["watermarks"].update(data["watermarks"])
                 if "pid_settings" in data: default_conf["pid_settings"].update(data["pid_settings"])
                 if "limits" in data: default_conf["limits"].update(data["limits"])
@@ -115,25 +122,35 @@ def hard_flush_yafad_db():
         conf["run_state"] = "IDLE"
         conf["inject_done"] = 0
         save_config(conf)
+        
+        # Kill Proxy
         subprocess.run(["pkill", "-f", "yafad_proxy"], stderr=subprocess.DEVNULL)
         if PROXY_PROCESS:
             try: PROXY_PROCESS.kill()
             except: pass
             PROXY_PROCESS = None
-        if PROXY_LOG_FILE:
-            try: PROXY_LOG_FILE.close()
-            except: pass
-            PROXY_LOG_FILE = None
+        
         time.sleep(2.5)
         
         db_host = os.getenv("DB_HOST", "localhost")
         conn = psycopg2.connect(host=db_host, port=5432, user=db_user, password=db_pass, dbname="yafad_test")
         conn.autocommit = True
         cur = conn.cursor()
-        for t in ["table0", "table1", "table2", "table3", "table4", "deep_archive"]:
-            cur.execute(f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE;")
+        
+        # DYNAMISCHE SUCHE: Finde alle Tabellen, die zu YaFaD gehören!
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND (table_name LIKE 'table%' OR table_name LIKE 'archive%' OR table_name = 'deep_archive');")
+        tables = [row[0] for row in cur.fetchall()]
+        
+        if tables:
+            # Alle gefundenen Tabellen in einem einzigen Befehl leeren
+            tables_str = ", ".join(tables)
+            cur.execute(f"TRUNCATE TABLE {tables_str} CASCADE;")
+            
+        # Setze auch die Evaporated Mass Statistik zurück
+        cur.execute("UPDATE yafad_stats SET value = 0 WHERE key = 'evaporated_bytes';")
+            
         conn.close()
-        return "🧹 SUCCESS: NUCLEAR FLUSH! All proxy zombies killed & DB is 100% pristine!\n⚠️ REMINDER: You MUST restart main.go now!"
+        return f"🧹 SUCCESS: TOTAL NUCLEAR FLUSH! {len(tables)} tables completely nuked and stats reset!"
     except Exception as e:
         return f"❌ FLUSH FAILED: {e}"
 
@@ -302,11 +319,17 @@ def update_grafana_url(new_url):
     save_config(conf)
     return get_grafana_iframe(new_url), "✅ URL Updated"
 
-def update_general(vanish):
-    conf = get_current_config()
-    conf["vanish_threshold"] = vanish
-    save_config(conf)
-    return "✅ Settings Saved"
+def update_general(vanish_val, eps_val, comp_action, comp_path):
+    try:
+        conf = get_current_config()
+        conf["vanish_threshold"] = vanish_val
+        conf["epsilon"] = float(eps_val)
+        conf["compliance_action"] = comp_action
+        conf["compliance_path"] = comp_path
+        save_config(conf)
+        return "✅ Settings saved successfully!"
+    except Exception as e:
+        return f"❌ Error saving settings: {e}"
 
 def get_grafana_iframe(url):
     if "&kiosk" not in url and "?" in url: url += "&kiosk&theme=dark"
@@ -368,13 +391,72 @@ def get_status_text():
     progress = (done / total) * 100 if total > 0 else 0.0
     return f"**State:** {icon} {state} | **Progress:** {progress:.1f}% | **Target:** {target:,} | **T0 Cap:** {t0}"
 
+def start_simulator():
+    global SIM_PROCESS, SIM_LOG_FILE
+    
+    # Sicherstellen, dass nicht schon einer läuft
+    stop_simulator() 
+    
+    db_host = os.getenv("DB_HOST", "localhost")
+    env = os.environ.copy()
+    env["DB_HOST"] = db_host
+
+    try:
+        # Log-Datei im shared-Ordner anlegen (damit wir sie leicht auslesen können)
+        log_path = "shared/simulator.log"
+        SIM_LOG_FILE = open(log_path, "w")
+        
+        # Den Simulator starten (ohne -count, damit er im Endlos-Bio-Rhythmus-Modus läuft)
+        # WICHTIG: Erwartet, dass 'yafad_sim' im Container liegt (durch Dockerfile.dashboard)
+        cmd = ["./yafad_sim"] 
+        SIM_PROCESS = subprocess.Popen(cmd, stdout=SIM_LOG_FILE, stderr=subprocess.STDOUT, text=True, env=env, cwd=os.getcwd())
+        
+        return "🟢 Simulator Started (Bio-Rhythm Mode)"
+    except Exception as e:
+        return f"❌ Failed to start Simulator: {e}"
+
+def stop_simulator():
+    global SIM_PROCESS, SIM_LOG_FILE
+    
+    # 1. Den Popen-Prozess beenden, falls wir ihn haben
+    if SIM_PROCESS:
+        try: 
+            SIM_PROCESS.kill()
+        except: 
+            pass
+        SIM_PROCESS = None
+        
+    # 2. Zur Sicherheit alle Prozesse killen, die 'yafad_sim' heißen
+    subprocess.run(["pkill", "-f", "yafad_sim"], stderr=subprocess.DEVNULL)
+    
+    if SIM_LOG_FILE:
+        try: 
+            SIM_LOG_FILE.close()
+        except: 
+            pass
+        SIM_LOG_FILE = None
+        
+    return "🔴 Simulator Stopped"
+
+def read_simulator_log():
+    log_path = "shared/simulator.log"
+    if not os.path.exists(log_path):
+        return "No log output yet. Start the simulator first."
+    
+    try:
+        # Lese nur die letzten ~20 Zeilen, um das UI nicht zu überlasten
+        with open(log_path, 'r') as f:
+            lines = f.readlines()
+            return "".join(lines[-20:])
+    except Exception as e:
+        return f"Error reading log: {e}"
+
 with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
     init_conf = get_current_config()
     
     with gr.Row(equal_height=True):
         gr.Image("assets/Mission_control_logo.png", show_label=False, container=False, interactive=False, height=110)
-        btn_refresh_all = gr.Button("🔄 Sync UI from System", variant="secondary", size="sm")
-
+        
     with gr.Row():
         with gr.Column(scale=4):
             html_grafana = gr.HTML(value=get_grafana_iframe(init_conf.get("grafana_url", DEFAULT_GRAFANA)))
@@ -415,7 +497,7 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                         with gr.Accordion("🛠️ Auto-Generate Demo Legacy DB", open=False):
                             gr.Markdown("Creates a completely new legacy database filled with dummy records and auto-fills the credentials below.")
                             with gr.Row():
-                                gen_count = gr.Number(value=100000, label="Records to generate", interactive=True, scale=2)
+                                gen_count = gr.Slider(minimum=1000, maximum=1000000, step=1000, value=100000, label="Records to generate", interactive=True, scale=2)
                                 btn_gen_legacy = gr.Button("⚙️ Create Database", variant="secondary", scale=1)
                             gen_status = gr.Textbox(label="Generator Status", interactive=False)
                         gr.Markdown("### 🔗 Legacy Database Credentials")
@@ -427,7 +509,7 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                             db_u = gr.Textbox(label="User", value="legacy_user_7967")
                             db_pw = gr.Textbox(label="Pass", type="password")
                         
-                        mig_t0_cap = gr.Number(value=100000, label="Migration T0 Cap Size")
+                        mig_t0_cap = gr.Number(value=100000, label="Migration T0 Cap Size", interactive=True, scale=2)
                         mig_flush_enabled = gr.Checkbox(label="🧹 Flush YaFaD DB at Start", value=False)
                         mig_nuke_legacy = gr.Checkbox(label="🔥 Nuke Legacy Tables after Migration (TRUNCATE)", value=False)
                         lbl_mig_ram = gr.Markdown("Calc RAM...")
@@ -437,6 +519,14 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                         lbl_scan = gr.Markdown("")
                         
                         btn_scan.click(scan_database, inputs=[db_h, db_p, db_u, db_pw, db_n], outputs=[sel_tabs, lbl_scan])
+
+                        # --- HIER IST DIE NEUE VERKNÜPFUNG ---
+                        btn_gen_legacy.click(
+                            fn=generate_legacy_db, 
+                            inputs=[gen_count], 
+                            outputs=[gen_status, db_h, db_p, db_n, db_u, db_pw]
+                        )
+                        # ------------------------------------
 
                     def toggle_mode(mode):
                         return gr.update(visible=(mode == "🌿 Migrate Legacy DB (Strangler Fig)")), gr.update(interactive=(mode != "🌿 Migrate Legacy DB (Strangler Fig)"))
@@ -464,6 +554,25 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     btn_pause.click(pause_mission, outputs=out_mission)
                     btn_resume.click(resume_mission, outputs=out_mission)
                     btn_stop.click(stop_mission, outputs=out_mission)
+
+                    gr.Markdown("---") # Trennlinie
+                    gr.Markdown("### 🤖 Bio-Rhythm User Simulator")
+                    gr.Markdown("Simulates organic user traffic (bursts during day, calm at night).")
+                    
+                    with gr.Row():
+                        btn_start_sim = gr.Button("🟢 Start Simulator", variant="primary")
+                        btn_stop_sim = gr.Button("🔴 Stop Simulator", variant="stop")
+                    
+                    sim_status = gr.Textbox(label="Simulator Status", interactive=False)
+                    sim_log_output = gr.Textbox(label="Live Terminal Output (Last 20 lines)", interactive=False, lines=10)
+                    
+                    # Automatisches Update des Log-Fensters alle 2 Sekunden
+                    sim_timer = gr.Timer(2)
+                    sim_timer.tick(read_simulator_log, outputs=sim_log_output)
+
+                    # Button-Klicks mit den Funktionen verknüpfen
+                    btn_start_sim.click(start_simulator, outputs=sim_status)
+                    btn_stop_sim.click(stop_simulator, outputs=sim_status)
 
                 with gr.TabItem("🎛️ Tuning"):
                     gr.Markdown("### Dynamic Architecture")
@@ -497,13 +606,23 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                 with gr.TabItem("⚙️ Settings"):
                     txt_grafana = gr.Textbox(label="Grafana URL", value=init_conf.get("grafana_url"))
                     t_vanish = gr.Textbox(value=init_conf.get("vanish_threshold"), label="Vanish Threshold")
+                    
+                    gr.Markdown("### 🕳️ Event Horizon & Compliance (Hawking Radiation)")
+                    with gr.Row():
+                        epsilon_input = gr.Number(value=init_conf.get("epsilon", 0.001), label="Epsilon Threshold (Evaporation Point)", step=0.0001)
+                        compliance_action = gr.Radio(choices=["Delete (Evaporate)", "Compress & Store"], value=init_conf.get("compliance_action", "Delete (Evaporate)"), label="Compliance Action")
+                        
+                    compliance_path = gr.Textbox(value=init_conf.get("compliance_path", "./shared/compliance_archive"), label="Storage Path for Compressed Blocks", interactive=True)
+                    
                     btn_graf = gr.Button("Reload View")
                     btn_set = gr.Button("Save Settings")
                     lbl_set = gr.Label()
+                    
                     btn_graf.click(update_grafana_url, inputs=txt_grafana, outputs=[html_grafana, lbl_set])
-                    btn_set.click(update_general, inputs=[t_vanish], outputs=lbl_set)
+                    
+                    # WICHTIG: Die neuen Felder müssen in der Liste 'inputs' an die Update-Funktion übergeben werden!
+                    btn_set.click(update_general, inputs=[t_vanish, epsilon_input, compliance_action, compliance_path], outputs=lbl_set)
 
-    btn_refresh_all.click(reload_ui_values, inputs=None, outputs=[n_recs, n_t0_mission, s_cpu, n_t0_tune, s_cpu_tune, w_high, w_low, s_buoy, s_kp, s_ki, s_kd, txt_grafana, t_vanish, out_mission])
     n_t0_mission.change(calc_sim_ram, inputs=[n_t0_mission], outputs=lbl_ram)
     mig_t0_cap.change(calc_mig_ram, inputs=[mig_t0_cap], outputs=lbl_mig_ram)
     app.load(calc_sim_ram, inputs=[n_t0_mission], outputs=lbl_ram)
