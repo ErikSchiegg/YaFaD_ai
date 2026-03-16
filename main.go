@@ -437,6 +437,7 @@ func main() {
 
 	go configWatcher(ctx)
 	go brainWatcher(ctx)
+	go runVectorHarvester(ctx, hotPool)
 	go func() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
@@ -1535,6 +1536,95 @@ func runEquilibriumSmoother(ctx context.Context, router *StorageRouter) {
 			}
 		}
 	}
+}
+
+// --- KI HARVESTER (Background Embedding Worker) ---
+
+type OllamaRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+}
+
+type OllamaResponse struct {
+	Embedding []float64 `json:"embedding"`
+}
+
+func runVectorHarvester(ctx context.Context, pool *pgxpool.Pool) {
+	fmt.Println("🧠 KI-Harvester Online: Scanne lautlos nach unverstandenen Datensätzen...")
+
+	for {
+		// 1. Wir greifen uns 50 frische Datensätze aus T0, die noch kein Embedding haben
+		rows, err := pool.Query(ctx, "SELECT id, payload FROM table0 WHERE embedding IS NULL LIMIT 50")
+		if err != nil {
+			time.Sleep(5 * time.Second) // Bei DB-Stress kurz warten
+			continue
+		}
+
+		var ids, payloads []string
+		for rows.Next() {
+			var id, pl string
+			if err := rows.Scan(&id, &pl); err == nil {
+				ids = append(ids, id)
+				payloads = append(payloads, pl)
+			}
+		}
+		rows.Close()
+
+		if len(ids) == 0 {
+			// Alle Daten in T0 sind verstanden! Der Harvester macht ein kurzes Nickerchen.
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		// 2. Wir schicken die Texte an Ollama und updaten die DB
+		for i, id := range ids {
+			vector, err := getEmbeddingFromOllama(payloads[i])
+			if err == nil && len(vector) == 768 { // nomic-embed-text hat exakt 768 Dimensionen
+				// Vektor in PostgreSQL-Format umwandeln: "[0.1, 0.2, ...]"
+				vecStr := vectorToString(vector)
+
+				// Lautloses Update im Hintergrund
+				_, err := pool.Exec(ctx, "UPDATE table0 SET embedding = $1 WHERE id = $2", vecStr, id)
+				if err != nil {
+					fmt.Printf("⚠️ Harvester DB Error: %v\n", err)
+				}
+			}
+		}
+
+		// 3. Traffic Control: Eine winzige Pause, damit Ollama und die DB nicht überhitzen
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// Hilfsfunktion: Ruft die Ollama API auf
+func getEmbeddingFromOllama(text string) ([]float64, error) {
+	reqBody := OllamaRequest{
+		Model:  "nomic-embed-text",
+		Prompt: text,
+	}
+	jsonData, _ := json.Marshal(reqBody)
+
+	// Ollama läuft auf localhost:11434 (da wir im host-network sind)
+	resp, err := http.Post("http://localhost:11434/api/embeddings", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var oResp OllamaResponse
+	if err := json.NewDecoder(resp.Body).Decode(&oResp); err != nil {
+		return nil, err
+	}
+	return oResp.Embedding, nil
+}
+
+// Hilfsfunktion: Wandelt das Float-Array in einen Postgres-Vektor-String um
+func vectorToString(vec []float64) string {
+	strVals := make([]string, len(vec))
+	for i, v := range vec {
+		strVals[i] = fmt.Sprintf("%f", v)
+	}
+	return "[" + strings.Join(strVals, ",") + "]"
 }
 
 func startWorkers(ctx context.Context, router *StorageRouter, wg *sync.WaitGroup) {

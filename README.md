@@ -4,15 +4,6 @@
 
 ---
 
-# 🦁 YaFaD v0.9.4: "The Containerized Organism" 🚀
-### Goodbye, Installation Hell. Hello, Autonomous Data Metabolism.
-
-We are thrilled to announce the **v0.9.4 Release**! This update marks a paradigm shift in how you deploy and monitor your data metabolism. By fully containerizing the entire ecosystem—**Go Engine, Rust Core, PostgreSQL, Prometheus, Grafana, and Gradio**—we have officially eliminated "installation hell." 
-
-Whether you are on Arch (EndeavourOS), Debian, or MacOS, YaFaD now runs everywhere with surgical precision.
-
----
-
 # 🚀 Release: YaFaD_ai v0.9.5 – The "Semantic Fractal" Update
 
 We are thrilled to announce **YaFaD_ai v0.9.5**. With this release, the engine officially graduates from a simulated concept to a **production-ready, self-organizing data architecture**. 
