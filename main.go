@@ -416,6 +416,9 @@ func main() {
 	fmt.Println(" ✅ Connected!")
 	defer hotPool.Close()
 
+	// ---> RICHTIG: Wir übergeben hotPool statt pool <---
+	ensureTablesExist(ctx, hotPool)
+
 	coldPool, _ = pgxpool.New(ctx, connStr)
 	defer coldPool.Close()
 
@@ -682,16 +685,23 @@ func optimizePIDParams() {
 
 // -- wenn nötig, Tabellen erzeugen
 func ensureTablesExist(ctx context.Context, pool *pgxpool.Pool) {
+	// ---> NEU: Vektor-Erweiterung in PostgreSQL aktivieren
+	_, err := pool.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector;")
+	if err != nil {
+		fmt.Println("⚠️ Konnte pgvector nicht aktivieren (läuft das pgvector-Image?):", err)
+	}
+
 	tables := []string{"table0", "table1", "table2", "table3", "table4", "deep_archive", "archive0", "archive1", "archive2", "archive3", "archive4"}
 
 	for _, table := range tables {
-		// Tabelle erstellen
+		// Tabelle mit neuer Vector-Spalte erstellen
 		query := fmt.Sprintf(`
             CREATE TABLE IF NOT EXISTS %s (
                 id TEXT PRIMARY KEY,
                 payload TEXT,
                 utility_index DOUBLE PRECISION,
-                last_activity TIMESTAMP
+                last_activity TIMESTAMP,
+                embedding VECTOR(768)
             );`, table)
 
 		_, err := pool.Exec(ctx, query)
@@ -703,10 +713,18 @@ func ensureTablesExist(ctx context.Context, pool *pgxpool.Pool) {
 		indexQuery := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_utility ON %s (utility_index ASC);", table, table)
 		_, err = pool.Exec(ctx, indexQuery)
 		if err != nil {
-			fmt.Printf("❌ Fehler beim Erstellen des Index für %s: %v\n", table, err)
+			fmt.Printf("❌ Fehler beim Erstellen des Utility-Index für %s: %v\n", table, err)
+		}
+
+		// ---> NEU: HNSW Index für blitzschnelle semantische Vektor-Suche erstellen
+		// vector_cosine_ops ist die optimale Metrik für Text-Embeddings
+		vectorIndexQuery := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_embedding ON %s USING hnsw (embedding vector_cosine_ops);", table, table)
+		_, err = pool.Exec(ctx, vectorIndexQuery)
+		if err != nil {
+			fmt.Printf("⚠️ Fehler beim Erstellen des Vektor-Index für %s: %v\n", table, err)
 		}
 	}
-	fmt.Println("🏗️  Database Schema verified (T0-T4, Deep Archive & Indices).")
+	fmt.Println("🏗️  Database Schema verified (T0-T4, Deep Archive, Vector Embeddings & Indices).")
 }
 
 // --- WORKER LOGIC (Dynamic Buoyancy) ---

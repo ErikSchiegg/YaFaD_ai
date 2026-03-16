@@ -1,14 +1,16 @@
 services:
-  # 1. PostgreSQL
+  # 1. PostgreSQL pgvector 
   postgres:
-    image: postgres:15-alpine
-    network_mode: "host"
+    image: pgvector/pgvector:pg15
+    container_name: postgres-1
     environment:
-      POSTGRES_USER: eriks
-      POSTGRES_PASSWORD: test
+      POSTGRES_USER: ${DB_USER:-eriks}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-test}
       POSTGRES_DB: yafad_test
+    ports:
+      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data   # <--- KORRIGIERT: Nutzt jetzt das saubere Docker Named Volume
 
   # 2. Grafana
   grafana:
@@ -18,7 +20,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_SERVER_HTTP_PORT=3031
       - GF_INSTALL_PLUGINS=marcusolsson-csv-datasource
-      - GF_LOG_LEVEL=warn   # <--- NEU: Zeigt nur noch Warnungen und Fehler an
+      - GF_LOG_LEVEL=warn
     volumes:
       - grafana_data:/var/lib/grafana
       - shared_workspace:/app/shared
@@ -28,12 +30,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.engine
-    # Die Sektion "ports" lassen wir weg, da "host" mode sie ohnehin öffnet
     network_mode: "host"
     environment:
       - DB_USER=eriks
       - DB_PASSWORD=test
-      - DB_HOST=localhost # Korrekt bei network_mode: host
+      - DB_HOST=localhost 
     volumes:
       - shared_workspace:/app/shared
     depends_on:
@@ -64,8 +65,11 @@ services:
       - DB_USER=eriks
       - DB_PASSWORD=test
       - DB_HOST=localhost 
+    volumes:
+      - shared_workspace:/app/shared   # <--- KORRIGIERT: FEHLTE VORHER!
     depends_on:
       - postgres
+
 
 volumes:
   pgdata:

@@ -113,6 +113,18 @@ def calc_mig_ram(t0_limit):
     except:
         return "..."
 
+def read_fractal_logs():
+    log_path = "shared/fractal.log"
+    if not os.path.exists(log_path):
+        return "⏳ Waiting for Fractal Engine logs..."
+    try:
+        with open(log_path, "r") as f:
+            lines = f.readlines()
+            # Zeige die letzten 25 Zeilen
+            return "".join(lines[-25:])
+    except Exception as e:
+        return f"Error reading fractal logs: {e}"
+
 def hard_flush_yafad_db():
     global PROXY_PROCESS, PROXY_LOG_FILE
     db_user = os.getenv("DB_USER", "eriks")
@@ -566,13 +578,18 @@ with gr.Blocks(title="YaFaD v0.9.3 Mission Control") as app:
                     sim_status = gr.Textbox(label="Simulator Status", interactive=False)
                     sim_log_output = gr.Textbox(label="Live Terminal Output (Last 20 lines)", interactive=False, lines=10)
                     
-                    # Automatisches Update des Log-Fensters alle 2 Sekunden
+                   # Automatisches Update des Log-Fensters alle 2 Sekunden
                     sim_timer = gr.Timer(2)
                     sim_timer.tick(read_simulator_log, outputs=sim_log_output)
 
                     # Button-Klicks mit den Funktionen verknüpfen
                     btn_start_sim.click(start_simulator, outputs=sim_status)
                     btn_stop_sim.click(stop_simulator, outputs=sim_status)
+
+                    with gr.Accordion("🌌 Fractal Engine Logs", open=True):
+                        fractal_log_output = gr.Textbox(label="Deep Decay & Hawking Radiation", lines=10, interactive=False)
+                    # ---> NEU: Der gleiche Timer feuert jetzt auch das Fractal-Log ab! <---
+                    sim_timer.tick(read_fractal_logs, outputs=fractal_log_output)
 
                 with gr.TabItem("🎛️ Tuning"):
                     gr.Markdown("### Dynamic Architecture")
