@@ -29,6 +29,9 @@ var (
 	PidKpValue = prometheus.NewGauge(prometheus.GaugeOpts{Name: "yafad_pid_kp", Help: "Current Proportional Term"})
 	PidKiValue = prometheus.NewGauge(prometheus.GaugeOpts{Name: "yafad_pid_ki", Help: "Current Integral Term"})
 	PidKdValue = prometheus.NewGauge(prometheus.GaugeOpts{Name: "yafad_pid_kd", Help: "Current Derivative Term"})
+
+	// ---> NEU: T0 Capacity für Grafana <---
+	T0CapSizeValue = prometheus.NewGauge(prometheus.GaugeOpts{Name: "yafad_t0_cap_size", Help: "Current dynamic capacity limit for table0"})
 )
 
 func init() {
@@ -42,6 +45,8 @@ func init() {
 	prometheus.MustRegister(PidKpValue)
 	prometheus.MustRegister(PidKiValue)
 	prometheus.MustRegister(PidKdValue)
+	// ---> NEU: Registrierung der Capacity <---
+	prometheus.MustRegister(T0CapSizeValue)
 }
 
 type MonitorConfig struct {
@@ -67,7 +72,7 @@ func StartMonitor(pool *pgxpool.Pool, cfg MonitorConfig, getLambda func() float6
 			writer.Write([]string{
 				"timestamp", "runtime_sec", "total_biomass",
 				"t0", "t1", "t2", "t3", "t4", "deep_archive",
-				"archive0", "archive1", "archive2", "archive3", "archive4", // <--- NEU
+				"archive0", "archive1", "archive2", "archive3", "archive4",
 				"t0_pct", "t1_pct", "t2_pct", "t3_pct", "t4_pct",
 				"lambda", "phi_diff",
 			})
@@ -81,7 +86,7 @@ func StartMonitor(pool *pgxpool.Pool, cfg MonitorConfig, getLambda func() float6
 		counts := make(map[string]int)
 		var total int64
 
-		// ---> NEU: Die komplette Liste inkl. Fractal Archives <---
+		// Die komplette Liste inkl. Fractal Archives
 		tiers := []string{
 			"table0", "table1", "table2", "table3", "table4",
 			"deep_archive",
@@ -118,6 +123,9 @@ func StartMonitor(pool *pgxpool.Pool, cfg MonitorConfig, getLambda func() float6
 		PidKiValue.Set(ki)
 		PidKdValue.Set(kd)
 
+		// ---> NEU: Prometheus die aktuelle T0-Kapazität mitteilen <---
+		T0CapSizeValue.Set(cfg.Capacities["table0"])
+
 		if simRunning {
 			SimActiveValue.Set(1.0)
 		} else {
@@ -151,9 +159,9 @@ func StartMonitor(pool *pgxpool.Pool, cfg MonitorConfig, getLambda func() float6
 				fmt.Sprintf("%d", counts["table0"]), fmt.Sprintf("%d", counts["table1"]),
 				fmt.Sprintf("%d", counts["table2"]), fmt.Sprintf("%d", counts["table3"]),
 				fmt.Sprintf("%d", counts["table4"]), fmt.Sprintf("%d", counts["deep_archive"]),
-				fmt.Sprintf("%d", counts["archive0"]), fmt.Sprintf("%d", counts["archive1"]), // <--- NEU
-				fmt.Sprintf("%d", counts["archive2"]), fmt.Sprintf("%d", counts["archive3"]), // <--- NEU
-				fmt.Sprintf("%d", counts["archive4"]), // <--- NEU
+				fmt.Sprintf("%d", counts["archive0"]), fmt.Sprintf("%d", counts["archive1"]),
+				fmt.Sprintf("%d", counts["archive2"]), fmt.Sprintf("%d", counts["archive3"]),
+				fmt.Sprintf("%d", counts["archive4"]),
 				pcts["table0"], pcts["table1"], pcts["table2"], pcts["table3"], pcts["table4"],
 				fmt.Sprintf("%f", lambda), fmt.Sprintf("%.4f", phiDiff),
 			}
