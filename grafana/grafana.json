@@ -21,7 +21,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "12.3.1"
+      "version": "12.4.0"
     },
     {
       "type": "datasource",
@@ -62,7 +62,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
   "links": [],
   "panels": [
     {
@@ -139,7 +138,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -161,7 +160,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_inject_target{}",
-          "hide": false,
           "instant": false,
           "legendFormat": "target",
           "range": true,
@@ -222,7 +220,7 @@
         "showThresholdMarkers": true,
         "sizing": "auto"
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -248,29 +246,27 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "text",
+            "mode": "continuous-GrYlRd"
           },
           "mappings": [],
-          "noValue": "0",
+          "noValue": "empty",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
-          }
+          },
+          "unit": "none"
         },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"table0\"}"
+              "options": "table0"
             },
             "properties": [
               {
@@ -289,7 +285,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"table1\"}"
+              "options": "table1"
             },
             "properties": [
               {
@@ -308,7 +304,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"table2\"}"
+              "options": "table2"
             },
             "properties": [
               {
@@ -327,7 +323,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"table3\"}"
+              "options": "table3"
             },
             "properties": [
               {
@@ -346,7 +342,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"table4\"}"
+              "options": "table4"
             },
             "properties": [
               {
@@ -365,7 +361,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "{__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"deep_archive\"}"
+              "options": "deep archive"
             },
             "properties": [
               {
@@ -410,7 +406,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -418,11 +414,23 @@
             "uid": "${DS_PROMETHEUS-1}"
           },
           "editorMode": "code",
-          "expr": "yafad_state_value{}",
+          "expr": "yafad_state_value{tier=~\"table.*\"}",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "{{tier}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "sum(yafad_state_value{tier=~\"archive.*\"})",
+          "instant": false,
+          "legendFormat": "deep archive",
+          "range": true,
+          "refId": "B"
         }
       ],
       "title": "records in a table",
@@ -495,7 +503,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -565,7 +573,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -741,7 +749,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"deep_archive\"}"
+              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"archive0\"}"
             },
             "properties": [
               {
@@ -753,7 +761,83 @@
               },
               {
                 "id": "displayName",
-                "value": "deep fractal archive"
+                "value": "A0"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"archive1\"}"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "A1"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"archive2\"}"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "A2"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"archive3\"}"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "semi-dark-purple",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "A3"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"archive4\"}"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-purple",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "A4"
               }
             ]
           }
@@ -779,7 +863,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -803,7 +887,9 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": {},
+            "excludeByName": {
+              "yafad_state_value {__name__=\"yafad_state_value\", instance=\"localhost:2112\", job=\"yafad\", tier=\"deep_archive\"}": true
+            },
             "includeByName": {},
             "indexByName": {
               "Time": 6,
@@ -905,7 +991,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -1107,7 +1193,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -1116,7 +1202,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"table0\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "T0 (Hot)",
           "range": true,
@@ -1129,7 +1214,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"table1\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "T1",
           "range": true,
@@ -1142,7 +1226,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"table2\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "T2",
           "range": true,
@@ -1155,7 +1238,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"table3\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "T3",
           "range": true,
@@ -1168,7 +1250,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"table4\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "T4",
           "range": true,
@@ -1181,7 +1262,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_state_value{tier=\"deep_archive\"}",
-          "hide": false,
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -1334,7 +1414,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.3.1",
+      "pluginVersion": "12.4.0",
       "targets": [
         {
           "datasource": {
@@ -1355,7 +1435,6 @@
           },
           "editorMode": "code",
           "expr": "yafad_lambda{}",
-          "hide": false,
           "instant": false,
           "legendFormat": "Lambda (Flow Rate)",
           "range": true,
@@ -1363,6 +1442,237 @@
         }
       ],
       "title": "Phi Diff / Lamda",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS-1}"
+      },
+      "description": "fractal archive",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 36,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "dash": [
+                10,
+                10
+              ],
+              "fill": "dash"
+            },
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "archive0"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "archive1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "archive2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "super-light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "archive3"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "archive4"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 22,
+        "x": 2,
+        "y": 43
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "yafad_state_value{tier=\"archive0\"}",
+          "instant": false,
+          "legendFormat": "archive0",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "yafad_state_value{tier=\"archive1\"}",
+          "instant": false,
+          "legendFormat": "archive1",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "yafad_state_value{tier=\"archive2\"}",
+          "instant": false,
+          "legendFormat": "archive2",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "yafad_state_value{tier=\"archive3\"}",
+          "instant": false,
+          "legendFormat": "archive3",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS-1}"
+          },
+          "editorMode": "code",
+          "expr": "yafad_state_value{tier=\"archive4\"}",
+          "instant": false,
+          "legendFormat": "archive4",
+          "range": true,
+          "refId": "E"
+        }
+      ],
+      "title": "deep fractal archive",
       "type": "timeseries"
     }
   ],
@@ -1374,13 +1684,13 @@
     "list": []
   },
   "time": {
-    "from": "now-115m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "YaFaD_ai Biomass Tiers",
   "uid": "adf7cqm",
-  "version": 74,
+  "version": 85,
   "weekStart": ""
 }
