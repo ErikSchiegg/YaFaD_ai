@@ -48,7 +48,7 @@ YaFaD v0.9.5 proves that an organic, physics-based approach to data lifecycle ma
 
 Ollama is presumed to be installed, alredy, and not included in the Yafad_ai Docker container.
 
-To pull the 768 vevtor embedding model into your preinstalled Docker Ollama:
+To pull the 768 vector embedding model into your preinstalled Docker Ollama:
 
 ```bash
 docker exec -it yafad_ollama ollama pull nomic-embed-text
