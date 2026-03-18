@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Konfiguration
-VERSION="v0.9.3"
+VERSION="v0.9.5"
 RELEASE_DIR="release_${VERSION}"
 RUST_DIR="core"
 GRAFANA_SRC="grafana/grafana.json"

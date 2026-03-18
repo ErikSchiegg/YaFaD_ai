@@ -66,7 +66,7 @@ docker-compose up --build -d
 
 Follow the engine logs in real-time to watch the "Biomass" grow:
 ```bash
-docker logs -f yafad-engine-1
+docker logs -f yafad_ai-yafad-engine-1
 ```
 
 ## ⏸️ Pause / Stop the Mission
@@ -104,7 +104,7 @@ docker-compose up --build
 
 👉 Access via browser: ```http://localhost:7888```
 <p align="center">
-<img src="assets/yafad_pdf/Autonomous_Data_Metabolism_6.png" width="80%">
+<img src="assets/yafad_mission_control.png" width="100%">
 </p>
 
 ---

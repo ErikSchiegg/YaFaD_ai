@@ -1075,6 +1075,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 	fmt.Println("\n🏁 INJECTION COMPLETE. Finalizing System...")
 	configMu.Lock()
+	// ---> FIX: Wir bleiben dauerhaft im SETTLING Modus! <---
 	globalConfig.RunState = "SETTLING"
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
@@ -1082,12 +1083,9 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	// Abschließende Optimierung für den "Rest"
 	optimizePIDParams()
 
-	time.Sleep(10 * time.Second)
-	configMu.Lock()
-	globalConfig.RunState = "IDLE"
-	saveConfigToJSON(globalConfig)
-	configMu.Unlock()
-	fmt.Println("✅ MISSION ACCOMPLISHED. Organism is resting.")
+	// ---> FIX: Den harten Cut auf IDLE haben wir komplett entfernt! <---
+
+	fmt.Println("🌌 INJECTION FINISHED. Gravity engine continues to settle the data (T4 flushing).")
 }
 
 func saveConfigToJSON(config SystemConfig) {
