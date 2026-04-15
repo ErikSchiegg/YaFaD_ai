@@ -40,7 +40,7 @@ import (
 
 const PHI = 1.61803398875
 
-// ---> DOCKER ANPASSUNGEN: Pfade in den shared/ Ordner umgeleitet <---
+// ---> DOCKER ADJUSTMENTS: Paths redirected to the shared/ folder <---
 const CONFIG_FILE = "shared/yafad_config.json"
 const BRAIN_FILE = "shared/brain_weights.json"
 const METRICS_FILE = "shared/yafad_metrics.csv"
@@ -167,11 +167,11 @@ func (pid *PIDController) Update(currentVal, setPoint float64) float64 {
 	return (pid.Kp * error) + (pid.Ki * pid.Integral) + (pid.Kd * derivative)
 }
 
-// --- IMMUNSYSTEM (AES-256-GCM Verschlüsselung) ---
+// --- IMMUNE SYSTEM (AES-256-GCM encryption) ---
 var globalSymmetricKey []byte
 
 func initCrypto() {
-	// Sicherstellen, dass das Shared-Verzeichnis existiert
+	// Make sure the shared directory exists
 	os.MkdirAll("shared", os.ModePerm)
 
 	data, err := os.ReadFile(KEY_FILE)
@@ -355,14 +355,14 @@ func adaptPhysics(currentHigh, currentLow, currentBuoy float64, isRunning bool, 
 
 // --- MAIN ---
 func main() {
-	// Sicherstellen, dass das Shared-Verzeichnis existiert
+	// Make sure the shared directory exists
 	os.MkdirAll("shared", os.ModePerm)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Logger initialisieren
-	logPath := "shared/yafad_debug.log" // Auch ins Shared-Dir für Docker
+	// Initialize logger
+	logPath := "shared/yafad_debug.log" // Also in the shared dir for Docker
 	logFile, _ := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	defer logFile.Close()
 	logger := slog.New(slog.NewJSONHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -376,7 +376,7 @@ func main() {
 		cancel()
 	}()
 
-	// ---> DOCKER ANPASSUNG: DB_HOST auslesen <---
+	// ---> DOCKER CUSTOMIZATION: Read DB_HOST <---
 	dbUser := os.Getenv("DB_USER")
 	if dbUser == "" {
 		dbUser = "eriks"
@@ -416,7 +416,6 @@ func main() {
 	fmt.Println(" ✅ Connected!")
 	defer hotPool.Close()
 
-	// ---> RICHTIG: Wir übergeben hotPool statt pool <---
 	ensureTablesExist(ctx, hotPool)
 
 	coldPool, _ = pgxpool.New(ctx, connStr)
@@ -428,11 +427,11 @@ func main() {
 	initConfig()
 	initCrypto()
 
-	//START WEBSERVER
+	//Start WEBSERVER
 	go func() {
 		http.ListenAndServe(":6060", nil)
 	}()
-	// GOSSIP PROTOKOLL STARTEN!
+	// Start GOSSIP PROTOCOL!
 	startGossipProtocol(ctx, hotPool)
 
 	go configWatcher(ctx)
@@ -442,7 +441,7 @@ func main() {
 		fmt.Println("📈 Starting Prometheus Metrics Server on :2112/metrics")
 		http.Handle("/metrics", promhttp.Handler())
 
-		// Osmose Empfänger
+		// Osmosis receiver
 		http.HandleFunc("/osmosis", func(w http.ResponseWriter, r *http.Request) {
 			var tp TransferPayload
 			if err := json.NewDecoder(r.Body).Decode(&tp); err != nil {
@@ -466,8 +465,8 @@ func main() {
 		}
 	}()
 
-	// ---> RUST CORE: Fallback-Pfade für Docker <---
-	// Versucht erst den Standardpfad, dann einen Root-Pfad falls kopiert
+	// ---> RUST CORE: Fallback paths for Docker <---
+	// First tries the default path, then a root path if copied
 	rustLibPath := "./core/target/release/libyafad_core.so"
 	if _, err := os.Stat(rustLibPath); os.IsNotExist(err) {
 		rustLibPath = "./libyafad_core.so"
@@ -492,8 +491,8 @@ func main() {
 	fmt.Println("🦁 YaFaD v0.9.3 Online. Waiting for Mission Command via Dashboard...")
 
 	startMonitoringService(hotPool)
-	// Die Dashboard-Start-Funktion wird in Docker nicht mehr benötigt (Gradio läuft in eigenem Container)
-	// Wir lassen den Aufruf aber drin für Non-Docker-Umgebungen
+	// The dashboard launch function is no longer needed in Docker (Gradio runs in its own container)
+	// But we leave the call in for non-Docker environments
 	if os.Getenv("DISABLE_INTERNAL_DASHBOARD") != "true" {
 		go launchDashboard()
 	}
@@ -579,13 +578,13 @@ func main() {
 	}
 }
 
-// --- NEUROPLASTIZITÄT: PID SELBSTOPTIMIERUNG ---
+// --- NEUROPLASTICITY: PID SELF-OPTIMIZATION---
 func optimizePIDParams() {
-	fmt.Println("\n🧠 KONSOLIDIERUNG: Analysiere Zell-Metriken für PID-Tuning...")
+	fmt.Println("\n🧠 CONSOLIDATION: Analyze cell metrics for PID tuning...")
 
 	data, err := os.ReadFile(METRICS_FILE)
 	if err != nil {
-		fmt.Println("⚠️ Konnte Metriken nicht lesen, überspringe Tuning.")
+		fmt.Println("⚠️ Couldn't read metrics, skip tuning.")
 		return
 	}
 
@@ -593,7 +592,7 @@ func optimizePIDParams() {
 	var phiDiffs []float64
 	var t0Pcts []float64
 
-	// Letzte 60 Messpunkte auswerten (ca. die letzten 5 Minuten unter Last)
+	// Evaluate the last 60 measuring points (approx. the last 5 minutes under load)
 	limit := len(lines) - 60
 	if limit < 1 {
 		limit = 1
@@ -616,7 +615,7 @@ func optimizePIDParams() {
 		return
 	}
 
-	// Statistik berechnen
+	// Calculate statistics
 	var sumPhi, maxT0, minT0 float64
 	minT0 = 999.0
 	for i, val := range phiDiffs {
@@ -639,28 +638,28 @@ func optimizePIDParams() {
 
 	var changed bool
 
-	// Regel 1: Oszillation (hektisches Atmen) bekämpfen
+	// Rule 1: Fight oscillation (hectic breathing).
 	if oscillation > 20.0 {
-		kp *= 0.95 // 5% Weniger aggressiv
-		kd *= 1.10 // 10% Mehr Dämpfung
+		kp *= 0.95 // 5% less aggressive
+		kd *= 1.10 // 10% more cushioning/damping
 		changed = true
-		fmt.Printf("   📉 Hohe Oszillation erkannt (%.1f%%). Erhöhe Dämpfung...\n", oscillation)
+		fmt.Printf("   📉 High oscillation detected (%.1f%%). Increase cushioning...\n", oscillation)
 	}
 
-	// Regel 2: Trägheit bekämpfen (Verfehlen des Goldenen Schnitts)
+	// Rule 2: Fight Inertia (Missing the Golden Ratio)
 	if avgPhi > 0.20 && oscillation <= 20.0 {
-		kp *= 1.05 // 5% Aggressiver
-		ki *= 1.02 // Leicht erhöhter Integral-Faktor
+		kp *= 1.05 // 5% more aggressive
+		ki *= 1.02 // slightly raised Integral-Factor
 		changed = true
-		fmt.Printf("   🐢 System zu träge (Avg PhiDiff=%.3f). Erhöhe Reaktionsfreudigkeit...\n", avgPhi)
+		fmt.Printf("   🐢 System too sluggish (Avg PhiDiff=%.3f). Increase responsiveness...\n", avgPhi)
 	}
 
 	// Regel 3: Perfektion
 	if avgPhi <= 0.20 && oscillation <= 20.0 {
-		fmt.Println("   ✨ System lief nah am biologischen Optimum. Keine Änderungen nötig.")
+		fmt.Println("   ✨ System ran close to biological optimum. No changes necessary.")
 	}
 
-	// Physikalische Sicherheitsgrenzen (damit das System nicht explodiert)
+	// Physical safety limits (so that the system does not explode)
 	if kp > 3.0 {
 		kp = 3.0
 	}
@@ -679,23 +678,23 @@ func optimizePIDParams() {
 		globalConfig.PID.Ki = math.Round(ki*1000) / 1000
 		globalConfig.PID.Kd = math.Round(kd*1000) / 1000
 		saveConfigToJSON(globalConfig)
-		fmt.Printf("   ✅ Neue PID-Werte gespeichert -> Kp: %.3f | Ki: %.3f | Kd: %.3f\n", globalConfig.PID.Kp, globalConfig.PID.Ki, globalConfig.PID.Kd)
+		fmt.Printf("   ✅ New PID values ​​saved -> Kp: %.3f | Ki: %.3f | Kd: %.3f\n", globalConfig.PID.Kp, globalConfig.PID.Ki, globalConfig.PID.Kd)
 	}
 	configMu.Unlock()
 }
 
-// -- wenn nötig, Tabellen erzeugen
+// -- if necessary, create tables
 func ensureTablesExist(ctx context.Context, pool *pgxpool.Pool) {
-	// ---> NEU: Vektor-Erweiterung in PostgreSQL aktivieren
+	// ---> NEW: Enable vector extension in PostgreSQL
 	_, err := pool.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector;")
 	if err != nil {
-		fmt.Println("⚠️ Konnte pgvector nicht aktivieren (läuft das pgvector-Image?):", err)
+		fmt.Println("⚠️ Couldn't activate pgvector (is the pgvector image running?):", err)
 	}
 
 	tables := []string{"table0", "table1", "table2", "table3", "table4", "deep_archive", "archive0", "archive1", "archive2", "archive3", "archive4"}
 
 	for _, table := range tables {
-		// Tabelle mit neuer Vector-Spalte erstellen
+		// Create table with new vector column
 		query := fmt.Sprintf(`
             CREATE TABLE IF NOT EXISTS %s (
                 id TEXT PRIMARY KEY,
@@ -707,22 +706,22 @@ func ensureTablesExist(ctx context.Context, pool *pgxpool.Pool) {
 
 		_, err := pool.Exec(ctx, query)
 		if err != nil {
-			fmt.Printf("❌ Fehler beim Erstellen der Tabelle %s: %v\n", table, err)
+			fmt.Printf("❌ Error creating table %s: %v\n", table, err)
 		}
 
-		// Index für "Coldest First" Logik erstellen (SEHR WICHTIG!)
+		// Create an index for "Coldest First" logic (VERY IMPORTANT!)
 		indexQuery := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_utility ON %s (utility_index ASC);", table, table)
 		_, err = pool.Exec(ctx, indexQuery)
 		if err != nil {
-			fmt.Printf("❌ Fehler beim Erstellen des Utility-Index für %s: %v\n", table, err)
+			fmt.Printf("❌ Error creating utility index for %s: %v\n", table, err)
 		}
 
-		// ---> NEU: HNSW Index für blitzschnelle semantische Vektor-Suche erstellen
-		// vector_cosine_ops ist die optimale Metrik für Text-Embeddings
+		// ---> NEW: Create HNSW index for lightning-fast semantic vector search
+		// vector_cosine_ops is the optimal metric for text embeddings
 		vectorIndexQuery := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_embedding ON %s USING hnsw (embedding vector_cosine_ops);", table, table)
 		_, err = pool.Exec(ctx, vectorIndexQuery)
 		if err != nil {
-			fmt.Printf("⚠️ Fehler beim Erstellen des Vektor-Index für %s: %v\n", table, err)
+			fmt.Printf("⚠️ Error creating vector index for %s: %v\n", table, err)
 		}
 	}
 	fmt.Println("🏗️  Database Schema verified (T0-T4, Deep Archive, Vector Embeddings & Indices).")
@@ -761,8 +760,8 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		userBuoyancy := globalConfig.BuoyancyFactor
 		configMu.RUnlock()
 
-		// ---> NEU: Dynamische Fibonacci-Kapazität <---
-		// Ignoriert alte Werte aus der Config und erzwingt den perfekten Goldenen Schnitt!
+		// ---> NEW: Dynamic Fibonacci Capacity <---
+		// Ignores old values ​​from the config and forces the perfect golden ratio!
 		capacity := int(float64(t0Cap) * math.Pow(PHI, float64(tier)))
 
 		vanishDur, _ := time.ParseDuration(vanishStr)
@@ -846,8 +845,8 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 		}
 
 		if count > 0 {
-			// ---> NEUE LOGIK (Coldest First Präzision) <---
-			// Wir ignorieren Zufall und holen IMMER die 1000 Datensätze mit dem niedrigsten Utility Index.
+			// ---> NEW LOGIC (Coldest First Precision) <---
+			// We ignore randomness and ALWAYS get the 1000 records with the lowest utility index.
 			query := fmt.Sprintf("SELECT id, utility_index, last_activity, payload FROM %s ORDER BY utility_index ASC LIMIT 1000", sourceTable)
 			rows, err := sourcePool.Query(ctx, query)
 			if err == nil {
@@ -871,13 +870,13 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 							shouldMigrate = true
 						}
 					} else {
-						// ---> NEU: Nur noch das Überdruck-Ventil (Der Heavy Lifter) <---
+						// ---> NEW: Only the overpressure valve (the heavy lifter) <---
 						if pressure >= 0.99 {
-							// Tabelle ist brechend voll. Ventil aufreißen!
+							// Table is packed. Open the valve!
 							shouldMigrate = true
 						} else {
-							// Tabelle hat noch Platz.
-							// Wir halten das Ventil zu und lassen den "Smoother" später die Feinarbeit machen.
+							// Table still has space.
+							// We keep the valve closed and let the “smoother” do the fine work later.
 							shouldMigrate = false
 						}
 					}
@@ -896,7 +895,7 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 						configMu.RUnlock()
 
 						if isLocal || tier == 4 {
-							// 1. GANZ NORMAL LOKAL MIGRIEREN
+							// 1. MIGRATE LOCALLY AS USUAL
 							if migrateRecord(ctx, sourcePool, targetPool, sourceTable, nextTable, r.ID, r.Payload, uNew, r.LastActivity) {
 								migratedCount++
 							}
@@ -932,14 +931,14 @@ func runWorker(ctx context.Context, router *StorageRouter, tier int, pid *PIDCon
 func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	fmt.Println("🔨 Preparing and Compiling Generator...")
 
-	// Zombie-Prozesse killen und alte Datei löschen, damit 'go build' nicht einfriert!
+	// Kill zombie processes and delete old files so that 'go build' doesn't freeze!
 	exec.Command("pkill", "-f", "yafad_sim").Run()
 	os.Remove("yafad_sim")
 
-	// Kompilieren mit Fehler-Check
+	// Compile with error checking
 	errBuild := exec.Command("go", "build", "-o", "yafad_sim", "generator.go").Run()
 	if errBuild != nil {
-		fmt.Printf("❌ Fehler beim Kompilieren des Generators: %v\n", errBuild)
+		fmt.Printf("❌ Error compiling generator: %v\n", errBuild)
 		return
 	}
 
@@ -950,7 +949,7 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 	batchSize := 10000
 	remaining := total - done
 
-	// Transparente Ausgabe der Zahlen
+	// Transparent output of the numbers
 	fmt.Printf("   -> Check: Target=%d | Done=%d | Remaining=%d\n", total, done, remaining)
 
 	if remaining <= 0 {
@@ -960,16 +959,16 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 	isDraining := false
 	lastBreathTime := time.Now()
-	lastOptTime := time.Now() // Cooldown für Optimierung
+	lastOptTime := time.Now() // Cooldown for optimization
 
 	fmt.Printf("🚀 PULSE MISSION STARTED: Target %d Records (Remaining: %d)\n", total, remaining)
 
-	// ---> NEU: Generiere einen einzigartigen Basis-Offset aus der aktuellen Zeit!
-	// Dadurch kollidieren IDs ("user_...") beim "Add Records" nie wieder.
+	// ---> NEW: Generate a unique base offset from the current time!
+	// This means that IDs ("user_...") will never collide again when "Add Records".
 	baseOffset := int(time.Now().Unix())
 
 	for remaining > 0 {
-		// Sofort-Stopp wenn RunState sich ändert oder Target ungültig wird
+		// Immediate stop if RunState changes or Target becomes invalid
 		configMu.RLock()
 		currentStatus := globalConfig.RunState
 		currentTarget := globalConfig.InjectTotal
@@ -1009,18 +1008,18 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 			if fillPct >= wHigh {
 				isDraining = true
 
-				// ---> BIOLOGISCHES SAHNEHÄUBCHEN: HYPERVENTILATIONS-ERKENNUNG <---
+				// ---> BIOLOGICAL icing on the cake: HYPERVENTILATION DETECTION<---
 				breathDuration := time.Since(lastBreathTime)
-				lastBreathTime = time.Now() // Startzeit für den nächsten Atemzug setzen
+				lastBreathTime = time.Now() // Set start time for the next breath
 
 				fmt.Printf("\n🌊 T0 High Water Mark (%.1f%% >= %.1f%%). Switching to DRAIN Mode.\n", fillPct, wHigh)
 
-				// Wenn die Maschine zu schnell atmet (Oszillation unter 20 Sekunden)
-				// UND wir ihr seit der letzten Optimierung mindestens 60 Sekunden Zeit gegeben haben:
+				// If the machine breathes too fast (oscillation less than 20 seconds)
+				// AND we have given it at least 60 seconds since the last optimization:
 				if breathDuration < 20*time.Second && time.Since(lastOptTime) > 60*time.Second {
-					fmt.Printf("⚠️ HYPERVENTILATION ERKANNT (Atemzug dauerte nur %v). Leite Notfall-Optimierung ein...\n", breathDuration.Round(time.Second))
+					fmt.Printf("⚠️ HYPERVENTILATION DETECTED (breath only lasted %v). Initiate emergency optimization...\n", breathDuration.Round(time.Second))
 					optimizePIDParams()
-					lastOptTime = time.Now() // Cooldown starten
+					lastOptTime = time.Now() // Start Cooldown
 				}
 				// -------------------------------------------------------------------
 				continue
@@ -1031,19 +1030,19 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 				currentBatch = remaining
 			}
 
-			// ---> NEU: Der Offset setzt sich jetzt aus dem Zeitstempel und dem Fortschritt zusammen
+			// ---> NEW: The offset is now composed of the timestamp and the progress
 			offset := baseOffset + (total - remaining)
 
 			fmt.Printf("\r🔥 Injecting... [%d left] T0: %.1f%% (Target %.0f%%)    ", remaining, fillPct, wHigh)
 
-			// DOCKER ANPASSUNG: DB_HOST an den Simulator weitergeben
+			// DOCKER CUSTOMIZATION: Pass DB_HOST to the simulator
 			dbHost := os.Getenv("DB_HOST")
 			if dbHost == "" {
 				dbHost = "localhost"
 			}
 			cmd := exec.CommandContext(ctx, "./yafad_sim", "-count", fmt.Sprintf("%d", currentBatch), "-mode", "scenario", "-offset", fmt.Sprintf("%d", offset))
 
-			// Das Environment für den Sub-Prozess anpassen!
+			// Adjust the environment for the sub-process!
 			cmd.Env = append(os.Environ(), fmt.Sprintf("DB_HOST=%s", dbHost))
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -1075,15 +1074,15 @@ func runInjector(ctx context.Context, pool *pgxpool.Pool, total int) {
 
 	fmt.Println("\n🏁 INJECTION COMPLETE. Finalizing System...")
 	configMu.Lock()
-	// ---> FIX: Wir bleiben dauerhaft im SETTLING Modus! <---
+	// ---> FIX: We stay permanently in SETTLING mode! <---
 	globalConfig.RunState = "SETTLING"
 	saveConfigToJSON(globalConfig)
 	configMu.Unlock()
 
-	// Abschließende Optimierung für den "Rest"
+	// Final optimization for the “rest”
 	optimizePIDParams()
 
-	// ---> FIX: Den harten Cut auf IDLE haben wir komplett entfernt! <---
+	// ---> FIX: We have completely removed the hard cut on IDLE! <---
 
 	fmt.Println("🌌 INJECTION FINISHED. Gravity engine continues to settle the data (T4 flushing).")
 }
@@ -1338,7 +1337,7 @@ func startMonitoringService(pool *pgxpool.Pool) {
 }
 
 // =====================================================================
-// --- GOSSIP PROTOCOL & ZELL-OSMOSE (EPIDEMIC NETWORKING) ---
+// --- GOSSIP PROTOCOL & CELL-OSMOSIS (EPIDEMIC NETWORKING) ---
 // =====================================================================
 
 func startGossipProtocol(ctx context.Context, pool *pgxpool.Pool) {
@@ -1480,12 +1479,12 @@ func runEquilibriumSmoother(ctx context.Context, router *StorageRouter) {
 			targetRatio := globalConfig.TargetRatio
 			configMu.RUnlock()
 
-			// Der Smoother arbeitet NUR, wenn nicht gerade ein wilder Inject/Migration läuft
+			// The smoother ONLY works when a wild inject/migration is not running
 			if runState == "RUNNING" {
 				continue
 			}
 
-			// Wir glätten von oben nach unten (T0->T1, T1->T2, T2->T3, T3->T4)
+			// We smooth from top to bottom (T0->T1, T1->T2, T2->T3, T3->T4)
 			for tier := 0; tier < 4; tier++ {
 				sourceTable := fmt.Sprintf("table%d", tier)
 				nextTable := fmt.Sprintf("table%d", tier+1)
@@ -1498,27 +1497,27 @@ func runEquilibriumSmoother(ctx context.Context, router *StorageRouter) {
 				targetPool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", nextTable)).Scan(&countNext)
 
 				if countCurrent == 0 {
-					continue // Nichts zu glätten
+					continue // Nothing to smooth over
 				}
 
-				// Wie viele Daten SOLLTEN im nächsten Tier sein, basierend auf dem aktuellen Tier?
-				// Ziel: countNext = countCurrent * TargetRatio (z.B. 1.618)
+				//How much data SHOULD be in the next tier based on the current tier?
+				// Target: countNext = countCurrent * TargetRatio (e.g. 1,618)
 				targetNextCount := float64(countCurrent) * targetRatio
 
-				// Wenn das nächste Tier "zu leer" ist (weniger als 90% vom Idealwert)
+				// If the next animal is "too empty" (less than 90% of ideal)
 				if float64(countNext) < targetNextCount*0.90 {
 
-					// Berechne, wie viel wir sanft rüberschieben müssen
+					// Calculate how much we have to push over gently
 					deficit := int(targetNextCount) - countNext
 					if deficit > 5000 {
 						deficit = 5000
-					} // Chunking für flüssige UI
+					} // Chunking for fluid UI
 
-					// Wir verschieben die "ältesten" (geringster Utility Index) Daten, um Platz zu machen
+					// We move the "oldest" (lowest utility index) data to make room
 					if deficit > 0 {
 						fmt.Printf("🧘 Smoother: Massaging %d records from %s -> %s to reach Phi...\n", deficit, sourceTable, nextTable)
 
-						// Schneller Batch-Move der ältesten Records (Sortiert nach utility_index)
+						// Quick batch move of the oldest records (sorted by utility_index)
 						query := fmt.Sprintf(`
                             WITH moved AS (
                                 DELETE FROM %s 
@@ -1548,13 +1547,13 @@ type OllamaResponse struct {
 }
 
 func runVectorHarvester(ctx context.Context, pool *pgxpool.Pool) {
-	fmt.Println("🧠 KI-Harvester Online: Scanne lautlos nach unverstandenen Datensätzen...")
+	fmt.Println("🧠 AI Harvester Online: Scan silently for misunderstood data sets...")
 
 	for {
-		// 1. Wir greifen uns 50 frische Datensätze aus T0, die noch kein Embedding haben
+		// 1. We grab 50 fresh data sets from T0 that do not yet have embedding
 		rows, err := pool.Query(ctx, "SELECT id, payload FROM table0 WHERE embedding IS NULL LIMIT 50")
 		if err != nil {
-			time.Sleep(5 * time.Second) // Bei DB-Stress kurz warten
+			time.Sleep(5 * time.Second) // If there is DB stress, wait briefly
 			continue
 		}
 
@@ -1569,19 +1568,19 @@ func runVectorHarvester(ctx context.Context, pool *pgxpool.Pool) {
 		rows.Close()
 
 		if len(ids) == 0 {
-			// Alle Daten in T0 sind verstanden! Der Harvester macht ein kurzes Nickerchen.
+			// All data in T0 is understood! The harvester takes a short nap.
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		// 2. Wir schicken die Texte an Ollama und updaten die DB
+		// 2. We send the texts to Ollama and update the DB
 		for i, id := range ids {
 			vector, err := getEmbeddingFromOllama(payloads[i])
-			if err == nil && len(vector) == 768 { // nomic-embed-text hat exakt 768 Dimensionen
-				// Vektor in PostgreSQL-Format umwandeln: "[0.1, 0.2, ...]"
+			if err == nil && len(vector) == 768 { // nomic-embed-text has exactly 768 dimensions
+				// Convert vector to PostgreSQL format: "[0.1, 0.2, ...]"
 				vecStr := vectorToString(vector)
 
-				// Lautloses Update im Hintergrund
+				// Silent update in the background
 				_, err := pool.Exec(ctx, "UPDATE table0 SET embedding = $1 WHERE id = $2", vecStr, id)
 				if err != nil {
 					fmt.Printf("⚠️ Harvester DB Error: %v\n", err)
@@ -1589,12 +1588,12 @@ func runVectorHarvester(ctx context.Context, pool *pgxpool.Pool) {
 			}
 		}
 
-		// 3. Traffic Control: Eine winzige Pause, damit Ollama und die DB nicht überhitzen
+		// 3. Traffic Control: A tiny pause so that Ollama and the DB don't overheat
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-// Hilfsfunktion: Ruft die Ollama API auf
+// Helper function: Calls the Ollama API
 func getEmbeddingFromOllama(text string) ([]float64, error) {
 	reqBody := OllamaRequest{
 		Model:  "nomic-embed-text",
@@ -1602,7 +1601,7 @@ func getEmbeddingFromOllama(text string) ([]float64, error) {
 	}
 	jsonData, _ := json.Marshal(reqBody)
 
-	// Ollama läuft auf localhost:11434 (da wir im host-network sind)
+	// Ollama runs on localhost:11434 (since we are on the host network)
 	resp, err := http.Post("http://localhost:11434/api/embeddings", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -1616,7 +1615,7 @@ func getEmbeddingFromOllama(text string) ([]float64, error) {
 	return oResp.Embedding, nil
 }
 
-// Hilfsfunktion: Wandelt das Float-Array in einen Postgres-Vektor-String um
+// Helper function: Converts the float array to a Postgres vector string
 func vectorToString(vec []float64) string {
 	strVals := make([]string, len(vec))
 	for i, v := range vec {
